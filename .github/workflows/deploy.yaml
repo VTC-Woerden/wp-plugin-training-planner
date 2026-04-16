@@ -1,0 +1,34 @@
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: Upload via SFTP (mirror)
+        env:
+          HOST: ${{ secrets.SFTP_BEACH_HOST }}
+          PORT: ${{ secrets.SFTP_BEACH_PORT }}
+          USER: ${{ secrets.SFTP_BEACH_USER }}
+          PASS: ${{ secrets.SFTP_BEACH_PASSWORD }}
+          REMOTE_DIR: ${{ secrets.SFTP_REMOTE_DIR }}
+        run: |
+          set -euo pipefail
+
+          # Exclusions: adjust to your project
+          EXCLUDES="--exclude .git/ --exclude .github/ --exclude node_modules/ --exclude vendor/ --exclude .env"
+
+          lftp -u "$USER","$PASS" -p "$PORT" "sftp://$HOST" <<EOF
+          set sftp:auto-confirm yes
+          set net:timeout 20
+          set net:max-retries 2
+          mirror -R --only-newer --verbose $EXCLUDES ./ "$REMOTE_DIR/"
+          bye
+          EOF
