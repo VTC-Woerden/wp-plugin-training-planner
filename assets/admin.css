@@ -1,0 +1,33 @@
+.vtc-tp-wrap .vtc-tp-inline-form {
+	margin: 1rem 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: center;
+}
+
+.vtc-tp-wrap .vtc-tp-slot-form {
+	margin-top: 1rem;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: center;
+}
+
+.vtc-tp-wrap .vtc-tp-subrow td {
+	background: #f6f7f7;
+	font-size: 13px;
+}
+
+.vtc-tp-week-nav {
+	margin-top: 1rem;
+}
+
+/* Visuele planner: volle breedte in wp-admin */
+body.vtc-tp-planner-screen #wpbody-content > .wrap {
+	max-width: none;
+}
+
+body.vtc-tp-planner-screen #wpbody-content {
+	padding-right: 0;
+}
