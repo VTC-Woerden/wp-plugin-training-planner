@@ -14,10 +14,10 @@ jobs:
 
       - name: Upload via SFTP (mirror)
         env:
-          HOST: ${{ secrets.SFTP_BEACH_HOST }}
-          PORT: ${{ secrets.SFTP_BEACH_PORT }}
-          USER: ${{ secrets.SFTP_BEACH_USER }}
-          PASS: ${{ secrets.SFTP_BEACH_PASSWORD }}
+          HOST: ${{ secrets.SFTP_HOST }}
+          PORT: ${{ secrets.SFTP_PORT }}
+          USER: ${{ secrets.SFTP_USER }}
+          PASS: ${{ secrets.SFTP_PASSWORD }}
           REMOTE_DIR: ${{ secrets.SFTP_REMOTE_DIR }}
         run: |
           set -euo pipefail
