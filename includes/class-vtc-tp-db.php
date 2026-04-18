@@ -11,16 +11,306 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class VTC_TP_DB {
 
+	const KIND_BASE      = 0;
+	const KIND_DEVIATION = 1;
+
 	/**
-	 * First blueprint id (MVP: single blueprint).
+	 * Basis-blauwdruk (kind=0), anders eerste blauwdruk (legacy).
 	 *
 	 * @return int
 	 */
+	public function get_base_blueprint_id() {
+		global $wpdb;
+		$p  = $wpdb->prefix;
+		$id = (int) $wpdb->get_var( "SELECT id FROM {$p}vtc_tp_blueprint WHERE kind = " . self::KIND_BASE . ' ORDER BY id ASC LIMIT 1' );
+		if ( $id > 0 ) {
+			return $id;
+		}
+		return (int) $wpdb->get_var( "SELECT id FROM {$p}vtc_tp_blueprint ORDER BY id ASC LIMIT 1" );
+	}
+
+	/**
+	 * @deprecated Gebruik get_base_blueprint_id().
+	 * @return int
+	 */
 	public function get_default_blueprint_id() {
+		return $this->get_base_blueprint_id();
+	}
+
+	/**
+	 * @return array<int, object>
+	 */
+	public function list_blueprints() {
 		global $wpdb;
 		$p = $wpdb->prefix;
-		$id = (int) $wpdb->get_var( "SELECT id FROM {$p}vtc_tp_blueprint ORDER BY id ASC LIMIT 1" );
-		return $id;
+		return $wpdb->get_results( "SELECT * FROM {$p}vtc_tp_blueprint ORDER BY kind ASC, id ASC" );
+	}
+
+	/**
+	 * Welke blauwdruk geldt voor deze ISO-week (afwijkende week-claim wint van basis).
+	 *
+	 * @return int blueprint id
+	 */
+	public function get_effective_blueprint_id_for_iso_week( $iso_week ) {
+		$norm = VTC_TP_Schedule::normalize_iso_week( (string) $iso_week );
+		if ( ! $norm ) {
+			return $this->get_base_blueprint_id();
+		}
+		global $wpdb;
+		$p   = $wpdb->prefix;
+		$dev = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT deviation_blueprint_id FROM {$p}vtc_tp_deviation_week WHERE iso_week = %s LIMIT 1",
+				$norm
+			)
+		);
+		if ( $dev > 0 ) {
+			return $dev;
+		}
+		return $this->get_base_blueprint_id();
+	}
+
+	/**
+	 * @return object|null { deviation_blueprint_id, iso_week }
+	 */
+	public function get_deviation_week_row( $iso_week ) {
+		$norm = VTC_TP_Schedule::normalize_iso_week( (string) $iso_week );
+		if ( ! $norm ) {
+			return null;
+		}
+		global $wpdb;
+		$p = $wpdb->prefix;
+		return $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT * FROM {$p}vtc_tp_deviation_week WHERE iso_week = %s LIMIT 1",
+				$norm
+			)
+		);
+	}
+
+	/**
+	 * @return array<int, object>
+	 */
+	public function list_deviation_weeks_for_blueprint( $deviation_blueprint_id ) {
+		global $wpdb;
+		$p = $wpdb->prefix;
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM {$p}vtc_tp_deviation_week WHERE deviation_blueprint_id = %d ORDER BY iso_week ASC",
+				(int) $deviation_blueprint_id
+			)
+		);
+	}
+
+	/**
+	 * @return array<int, object> Alle afwijkingsweken (globaal uniek per week).
+	 */
+	public function list_all_deviation_weeks() {
+		global $wpdb;
+		$p = $wpdb->prefix;
+		return $wpdb->get_results(
+			"SELECT w.*, b.name AS blueprint_name FROM {$p}vtc_tp_deviation_week w
+			INNER JOIN {$p}vtc_tp_blueprint b ON b.id = w.deviation_blueprint_id
+			ORDER BY w.iso_week ASC"
+		);
+	}
+
+	/**
+	 * @return int|null positief = nieuw id, 0 = week al geclaimd, null = geen geldige afwijkende blauwdruk/week
+	 */
+	public function insert_deviation_week( $deviation_blueprint_id, $iso_week ) {
+		$bp = $this->get_blueprint( (int) $deviation_blueprint_id );
+		if ( ! $bp || (int) $bp->kind !== self::KIND_DEVIATION ) {
+			return null;
+		}
+		$norm = VTC_TP_Schedule::normalize_iso_week( (string) $iso_week );
+		if ( ! $norm ) {
+			return null;
+		}
+		global $wpdb;
+		$p = $wpdb->prefix;
+		$exists = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$p}vtc_tp_deviation_week WHERE iso_week = %s LIMIT 1", $norm ) );
+		if ( $exists > 0 ) {
+			return 0;
+		}
+		$wpdb->insert(
+			"{$p}vtc_tp_deviation_week",
+			array(
+				'deviation_blueprint_id' => (int) $deviation_blueprint_id,
+				'iso_week'               => $norm,
+			),
+			array( '%d', '%s' )
+		);
+		return (int) $wpdb->insert_id;
+	}
+
+	/**
+	 * @return bool
+	 */
+	public function delete_deviation_week( $id ) {
+		global $wpdb;
+		$p = $wpdb->prefix;
+		return false !== $wpdb->delete( "{$p}vtc_tp_deviation_week", array( 'id' => (int) $id ), array( '%d' ) );
+	}
+
+	/**
+	 * @return int|false nieuwe blauwdruk-id
+	 */
+	public function insert_deviation_blueprint( $name, $parent_base_id ) {
+		$base = (int) $parent_base_id;
+		if ( $base !== $this->get_base_blueprint_id() ) {
+			return false;
+		}
+		global $wpdb;
+		$p = $wpdb->prefix;
+		$wpdb->insert(
+			"{$p}vtc_tp_blueprint",
+			array(
+				'name'            => sanitize_text_field( $name ),
+				'kind'            => self::KIND_DEVIATION,
+				'parent_base_id'  => $base,
+			),
+			array( '%s', '%d', '%d' )
+		);
+		$bid = (int) $wpdb->insert_id;
+		if ( $bid < 1 ) {
+			return false;
+		}
+		// Eerste versie: leeg gepubliceerd patroon.
+		$wpdb->insert(
+			"{$p}vtc_tp_blueprint_version",
+			array(
+				'blueprint_id' => $bid,
+				'label'        => __( 'Versie 1', 'vtc-training-planner' ),
+				'is_published' => 1,
+			),
+			array( '%d', '%s', '%d' )
+		);
+		$vid = (int) $wpdb->insert_id;
+		if ( $vid > 0 ) {
+			$wpdb->update(
+				"{$p}vtc_tp_blueprint",
+				array( 'editing_version_id' => $vid ),
+				array( 'id' => $bid ),
+				array( '%d' ),
+				array( '%d' )
+			);
+		}
+		return $bid;
+	}
+
+	/**
+	 * @return int|null
+	 */
+	public function get_published_version_id_for_blueprint( $blueprint_id ) {
+		global $wpdb;
+		$p = $wpdb->prefix;
+		$id = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT id FROM {$p}vtc_tp_blueprint_version WHERE blueprint_id = %d AND is_published = 1 ORDER BY id DESC LIMIT 1",
+				(int) $blueprint_id
+			)
+		);
+		return $id > 0 ? $id : null;
+	}
+
+	/**
+	 * Concept bewerkt deze versie (fallback: gepubliceerde versie).
+	 *
+	 * @return int|null
+	 */
+	public function get_editing_version_id_for_blueprint( $blueprint_id ) {
+		global $wpdb;
+		$p   = $wpdb->prefix;
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT editing_version_id FROM {$p}vtc_tp_blueprint WHERE id = %d", (int) $blueprint_id ) );
+		if ( $row && ! empty( $row->editing_version_id ) ) {
+			return (int) $row->editing_version_id;
+		}
+		return $this->get_published_version_id_for_blueprint( $blueprint_id );
+	}
+
+	/**
+	 * @return bool
+	 */
+	public function set_editing_version_id_for_blueprint( $blueprint_id, $version_id ) {
+		global $wpdb;
+		$p = $wpdb->prefix;
+		$ok = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$p}vtc_tp_blueprint_version WHERE id = %d AND blueprint_id = %d",
+				(int) $version_id,
+				(int) $blueprint_id
+			)
+		);
+		if ( $ok < 1 ) {
+			return false;
+		}
+		return false !== $wpdb->update(
+			"{$p}vtc_tp_blueprint",
+			array( 'editing_version_id' => (int) $version_id ),
+			array( 'id' => (int) $blueprint_id ),
+			array( '%d' ),
+			array( '%d' )
+		);
+	}
+
+	/**
+	 * @return array<int, object>
+	 */
+	public function list_versions_for_blueprint( $blueprint_id ) {
+		global $wpdb;
+		$p = $wpdb->prefix;
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT * FROM {$p}vtc_tp_blueprint_version WHERE blueprint_id = %d ORDER BY is_published DESC, id DESC",
+				(int) $blueprint_id
+			)
+		);
+	}
+
+	/**
+	 * Nieuwe concept-versie: kopie van huidige gepubliceerde slots naar concept-rij.
+	 *
+	 * @return int|false nieuwe version id
+	 */
+	public function create_draft_version_from_published( $blueprint_id, $label ) {
+		$pub_vid = $this->get_published_version_id_for_blueprint( $blueprint_id );
+		if ( ! $pub_vid ) {
+			return false;
+		}
+		global $wpdb;
+		$p = $wpdb->prefix;
+		$wpdb->insert(
+			"{$p}vtc_tp_blueprint_version",
+			array(
+				'blueprint_id' => (int) $blueprint_id,
+				'label'        => sanitize_text_field( $label ) ?: __( 'Concept', 'vtc-training-planner' ),
+				'is_published' => 0,
+			),
+			array( '%d', '%s', '%d' )
+		);
+		$new_vid = (int) $wpdb->insert_id;
+		if ( $new_vid < 1 ) {
+			return false;
+		}
+		$rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$p}vtc_tp_slot_published WHERE blueprint_version_id = %d", $pub_vid ) );
+		foreach ( $rows as $r ) {
+			$wpdb->insert(
+				"{$p}vtc_tp_slot_draft",
+				array(
+					'blueprint_id'         => (int) $blueprint_id,
+					'blueprint_version_id' => $new_vid,
+					'team_id'              => (int) $r->team_id,
+					'venue_id'             => (int) $r->venue_id,
+					'day_of_week'          => (int) $r->day_of_week,
+					'start_time'           => $r->start_time,
+					'end_time'             => $r->end_time,
+				),
+				array( '%d', '%d', '%d', '%d', '%d', '%s', '%s' )
+			);
+		}
+		$this->set_editing_version_id_for_blueprint( $blueprint_id, $new_vid );
+		return $new_vid;
 	}
 
 	/**
@@ -269,13 +559,17 @@ class VTC_TP_DB {
 	/**
 	 * @return array<int, object>
 	 */
-	public function get_slots_draft( $blueprint_id ) {
+	public function get_slots_draft( $blueprint_id, $version_id = null ) {
 		global $wpdb;
-		$p = $wpdb->prefix;
+		$p   = $wpdb->prefix;
+		$vid = null === $version_id ? $this->get_editing_version_id_for_blueprint( $blueprint_id ) : (int) $version_id;
+		if ( ! $vid ) {
+			return array();
+		}
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$p}vtc_tp_slot_draft WHERE blueprint_id = %d ORDER BY day_of_week, start_time",
-				$blueprint_id
+				"SELECT * FROM {$p}vtc_tp_slot_draft WHERE blueprint_version_id = %d ORDER BY day_of_week, start_time",
+				$vid
 			)
 		);
 	}
@@ -283,13 +577,17 @@ class VTC_TP_DB {
 	/**
 	 * @return array<int, object>
 	 */
-	public function get_slots_published( $blueprint_id ) {
+	public function get_slots_published( $blueprint_id, $version_id = null ) {
 		global $wpdb;
-		$p = $wpdb->prefix;
+		$p   = $wpdb->prefix;
+		$vid = null === $version_id ? $this->get_published_version_id_for_blueprint( $blueprint_id ) : (int) $version_id;
+		if ( ! $vid ) {
+			return array();
+		}
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$p}vtc_tp_slot_published WHERE blueprint_id = %d ORDER BY day_of_week, start_time",
-				$blueprint_id
+				"SELECT * FROM {$p}vtc_tp_slot_published WHERE blueprint_version_id = %d ORDER BY day_of_week, start_time",
+				$vid
 			)
 		);
 	}
@@ -300,11 +598,15 @@ class VTC_TP_DB {
 	 * @return array<int, object>
 	 */
 	public function get_slots_published_or_draft( $blueprint_id ) {
-		$pub = $this->get_slots_published( $blueprint_id );
+		$vp  = $this->get_published_version_id_for_blueprint( $blueprint_id );
+		if ( ! $vp ) {
+			return array();
+		}
+		$pub = $this->get_slots_published( $blueprint_id, $vp );
 		if ( ! empty( $pub ) ) {
 			return $pub;
 		}
-		return $this->get_slots_draft( $blueprint_id );
+		return $this->get_slots_draft( $blueprint_id, $vp );
 	}
 
 	/**
@@ -351,35 +653,52 @@ class VTC_TP_DB {
 	}
 
 	/**
-	 * Copy draft slots to published (replace all published for blueprint).
+	 * Copy draft slots to published voor de actieve concept-versie; die wordt de enige gepubliceerde versie.
 	 */
 	public function publish_slots( $blueprint_id ) {
 		global $wpdb;
-		$p = $wpdb->prefix;
-		$wpdb->delete( "{$p}vtc_tp_slot_published", array( 'blueprint_id' => $blueprint_id ), array( '%d' ) );
-		$draft = $this->get_slots_draft( $blueprint_id );
+		$p        = $wpdb->prefix;
+		$edit_vid = $this->get_editing_version_id_for_blueprint( $blueprint_id );
+		if ( ! $edit_vid ) {
+			return;
+		}
+		$wpdb->delete( "{$p}vtc_tp_slot_published", array( 'blueprint_version_id' => $edit_vid ), array( '%d' ) );
+		$draft = $this->get_slots_draft( $blueprint_id, $edit_vid );
 		foreach ( $draft as $row ) {
 			$wpdb->insert(
 				"{$p}vtc_tp_slot_published",
 				array(
-					'blueprint_id' => (int) $row->blueprint_id,
-					'team_id'      => (int) $row->team_id,
-					'venue_id'     => (int) $row->venue_id,
-					'day_of_week'  => (int) $row->day_of_week,
-					'start_time'   => $row->start_time,
-					'end_time'     => $row->end_time,
+					'blueprint_id'         => (int) $blueprint_id,
+					'blueprint_version_id' => (int) $edit_vid,
+					'team_id'              => (int) $row->team_id,
+					'venue_id'             => (int) $row->venue_id,
+					'day_of_week'          => (int) $row->day_of_week,
+					'start_time'           => $row->start_time,
+					'end_time'             => $row->end_time,
 				),
-				array( '%d', '%d', '%d', '%d', '%s', '%s' )
+				array( '%d', '%d', '%d', '%d', '%d', '%s', '%s' )
 			);
 		}
+		$wpdb->query( $wpdb->prepare( "UPDATE {$p}vtc_tp_blueprint_version SET is_published = 0 WHERE blueprint_id = %d", (int) $blueprint_id ) );
+		$wpdb->update(
+			"{$p}vtc_tp_blueprint_version",
+			array( 'is_published' => 1 ),
+			array( 'id' => (int) $edit_vid ),
+			array( '%d' ),
+			array( '%d' )
+		);
 	}
 
 	/**
 	 * Draft differs from published?
 	 */
 	public function draft_differs_from_published( $blueprint_id ) {
-		$d = $this->get_slots_draft( $blueprint_id );
-		$p = $this->get_slots_published( $blueprint_id );
+		$vid = $this->get_editing_version_id_for_blueprint( $blueprint_id );
+		if ( ! $vid ) {
+			return false;
+		}
+		$d = $this->get_slots_draft( $blueprint_id, $vid );
+		$p = $this->get_slots_published( $blueprint_id, $vid );
 		if ( count( $d ) !== count( $p ) ) {
 			return true;
 		}
@@ -444,18 +763,23 @@ class VTC_TP_DB {
 	 */
 	public function insert_slot_draft( $blueprint_id, $team_id, $venue_id, $day_of_week, $start_time, $end_time ) {
 		global $wpdb;
-		$p = $wpdb->prefix;
+		$p   = $wpdb->prefix;
+		$vid = $this->get_editing_version_id_for_blueprint( (int) $blueprint_id );
+		if ( ! $vid ) {
+			return 0;
+		}
 		$wpdb->insert(
 			"{$p}vtc_tp_slot_draft",
 			array(
-				'blueprint_id' => (int) $blueprint_id,
-				'team_id'      => (int) $team_id,
-				'venue_id'     => (int) $venue_id,
-				'day_of_week'  => min( 6, max( 0, (int) $day_of_week ) ),
-				'start_time'   => $start_time,
-				'end_time'     => $end_time,
+				'blueprint_id'         => (int) $blueprint_id,
+				'blueprint_version_id' => (int) $vid,
+				'team_id'              => (int) $team_id,
+				'venue_id'             => (int) $venue_id,
+				'day_of_week'          => min( 6, max( 0, (int) $day_of_week ) ),
+				'start_time'           => $start_time,
+				'end_time'             => $end_time,
 			),
-			array( '%d', '%d', '%d', '%d', '%s', '%s' )
+			array( '%d', '%d', '%d', '%d', '%d', '%s', '%s' )
 		);
 		return (int) $wpdb->insert_id;
 	}

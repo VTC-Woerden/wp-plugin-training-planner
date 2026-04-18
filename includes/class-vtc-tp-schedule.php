@@ -104,20 +104,22 @@ class VTC_TP_Schedule {
 	}
 
 	/**
-	 * Effective weekly slots for blueprint + week (exception overrides published defaults).
+	 * Effective weekly slots: afwijkende blauwdruk per week indien geclaimd, anders basis;
+	 * uitzonderingsweek op die effectieve blauwdruk gaat voor op het weekpatroon.
 	 *
 	 * @return array<int, object>
 	 */
-	public function get_effective_slots_for_week( $blueprint_id, $iso_week ) {
+	public function get_effective_slots_for_week( $iso_week ) {
 		$norm = self::normalize_iso_week( $iso_week );
 		if ( ! $norm ) {
 			return array();
 		}
-		$ex = $this->db->get_exception_week( $blueprint_id, $norm );
+		$bp_eff = $this->db->get_effective_blueprint_id_for_iso_week( $norm );
+		$ex     = $this->db->get_exception_week( $bp_eff, $norm );
 		if ( $ex ) {
 			return $this->db->get_exception_slots( (int) $ex->id );
 		}
-		return $this->db->get_slots_published_or_draft( $blueprint_id );
+		return $this->db->get_slots_published_or_draft( $bp_eff );
 	}
 
 	/**
@@ -126,7 +128,7 @@ class VTC_TP_Schedule {
 	 * @param array<int, object> $slots
 	 * @return array<int, array<string, mixed>>
 	 */
-	public function expand_slots_to_events( $iso_week, array $slots ) {
+	public function expand_slots_to_events( $iso_week, array $slots, $blueprint_id_for_stamdata ) {
 		$norm = self::normalize_iso_week( $iso_week );
 		if ( ! $norm || ! preg_match( '/^(\d{4})-W(\d{2})$/', $norm, $m ) ) {
 			return array();
@@ -140,7 +142,7 @@ class VTC_TP_Schedule {
 			return array();
 		}
 
-		$bp_id = $this->db->get_default_blueprint_id();
+		$bp_id = (int) $blueprint_id_for_stamdata;
 		$teams = array();
 		foreach ( $this->db->get_teams( $bp_id ) as $t ) {
 			$teams[ (int) $t->id ] = $t;
@@ -304,20 +306,21 @@ class VTC_TP_Schedule {
 	 * @return array{events: array, iso_week: string, used_exceptions: bool}
 	 */
 	public function get_merged_week( $iso_week, VTC_TP_Nevobo $nevobo ) {
-		$bp_id = $this->db->get_default_blueprint_id();
-		$norm  = self::normalize_iso_week( $iso_week ) ?: self::current_iso_week();
+		$norm = self::normalize_iso_week( $iso_week ) ?: self::current_iso_week();
 
-		$slots   = $this->get_effective_slots_for_week( $bp_id, $norm );
-		$ex      = $this->db->get_exception_week( $bp_id, $norm );
-		$train   = $this->expand_slots_to_events( $norm, $slots );
+		$bp_eff = $this->db->get_effective_blueprint_id_for_iso_week( $norm );
+		$slots  = $this->get_effective_slots_for_week( $norm );
+		$ex     = $this->db->get_exception_week( $bp_eff, $norm );
+		$train  = $this->expand_slots_to_events( $norm, $slots, $bp_eff );
 
 		$code = $this->db->get_nevobo_code();
 		$raw  = $nevobo->get_club_schedule_matches( $code );
 		$week = $nevobo->filter_matches_in_iso_week( $raw, $norm );
 
-		$scope = get_option( 'vtc_tp_matches_scope', 'home_halls' );
+		$scope   = get_option( 'vtc_tp_matches_scope', 'home_halls' );
+		$bp_base = $this->db->get_base_blueprint_id();
 		if ( 'home_halls' === $scope ) {
-			$locs = $this->db->get_locations( $bp_id );
+			$locs = $this->db->get_locations( $bp_base );
 			$week = $nevobo->filter_home_hall_matches( $week, $locs );
 		}
 
@@ -325,9 +328,11 @@ class VTC_TP_Schedule {
 		$events   = $this->merge_and_flag_conflicts( $train, $match_ev );
 
 		return array(
-			'events'           => $events,
-			'iso_week'         => $norm,
-			'used_exceptions'  => (bool) $ex,
+			'events'                  => $events,
+			'iso_week'                => $norm,
+			'used_exceptions'         => (bool) $ex,
+			'effective_blueprint_id'  => $bp_eff,
+			'uses_deviation_blueprint'=> $bp_eff !== $bp_base,
 		);
 	}
 }

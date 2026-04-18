@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class VTC_TP_Activator {
 
-	const DB_VERSION = '2';
+	const DB_VERSION = '3';
 
 	/**
 	 * Run on plugin activation.
@@ -37,8 +37,32 @@ class VTC_TP_Activator {
 			"CREATE TABLE {$p}vtc_tp_blueprint (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				name varchar(191) NOT NULL,
+				kind tinyint(3) unsigned NOT NULL DEFAULT 0,
+				parent_base_id bigint(20) unsigned DEFAULT NULL,
+				editing_version_id bigint(20) unsigned DEFAULT NULL,
 				created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-				PRIMARY KEY  (id)
+				PRIMARY KEY  (id),
+				KEY kind (kind),
+				KEY parent_base_id (parent_base_id)
+			) $charset_collate;",
+			"CREATE TABLE {$p}vtc_tp_blueprint_version (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				blueprint_id bigint(20) unsigned NOT NULL,
+				label varchar(191) NOT NULL DEFAULT '',
+				is_published tinyint(1) NOT NULL DEFAULT 0,
+				created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY  (id),
+				KEY blueprint_id (blueprint_id),
+				KEY bp_published (blueprint_id,is_published)
+			) $charset_collate;",
+			"CREATE TABLE {$p}vtc_tp_deviation_week (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				deviation_blueprint_id bigint(20) unsigned NOT NULL,
+				iso_week varchar(12) NOT NULL,
+				created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY  (id),
+				UNIQUE KEY iso_week (iso_week),
+				KEY deviation_blueprint_id (deviation_blueprint_id)
 			) $charset_collate;",
 			"CREATE TABLE {$p}vtc_tp_team (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -86,6 +110,7 @@ class VTC_TP_Activator {
 			"CREATE TABLE {$p}vtc_tp_slot_draft (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				blueprint_id bigint(20) unsigned NOT NULL,
+				blueprint_version_id bigint(20) unsigned NOT NULL,
 				team_id bigint(20) unsigned NOT NULL,
 				venue_id bigint(20) unsigned NOT NULL,
 				day_of_week tinyint(3) unsigned NOT NULL,
@@ -94,12 +119,14 @@ class VTC_TP_Activator {
 				created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				PRIMARY KEY  (id),
 				KEY blueprint_id (blueprint_id),
+				KEY blueprint_version_id (blueprint_version_id),
 				KEY team_id (team_id),
 				KEY venue_id (venue_id)
 			) $charset_collate;",
 			"CREATE TABLE {$p}vtc_tp_slot_published (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 				blueprint_id bigint(20) unsigned NOT NULL,
+				blueprint_version_id bigint(20) unsigned NOT NULL,
 				team_id bigint(20) unsigned NOT NULL,
 				venue_id bigint(20) unsigned NOT NULL,
 				day_of_week tinyint(3) unsigned NOT NULL,
@@ -108,6 +135,7 @@ class VTC_TP_Activator {
 				created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				PRIMARY KEY  (id),
 				KEY blueprint_id (blueprint_id),
+				KEY blueprint_version_id (blueprint_version_id),
 				KEY team_id (team_id),
 				KEY venue_id (venue_id)
 			) $charset_collate;",
@@ -143,9 +171,16 @@ class VTC_TP_Activator {
 		if ( 0 === $bp_count ) {
 			$wpdb->insert(
 				"{$p}vtc_tp_blueprint",
-				array( 'name' => __( 'Standaard', 'vtc-training-planner' ) ),
-				array( '%s' )
+				array(
+					'name' => __( 'Standaard', 'vtc-training-planner' ),
+					'kind' => 0,
+				),
+				array( '%s', '%d' )
 			);
+			$new_bp = (int) $wpdb->insert_id;
+			if ( $new_bp > 0 ) {
+				self::insert_default_version_for_blueprint( $wpdb, $p, $new_bp );
+			}
 		}
 
 		add_option( 'vtc_tp_cache_ttl', 1800 );
@@ -224,7 +259,132 @@ class VTC_TP_Activator {
 		}
 		$wpdb->query( "UPDATE {$v_table} SET venue_type = 'hall' WHERE venue_type IS NULL OR venue_type = ''" );
 
+		if ( version_compare( (string) $current, '3', '<' ) ) {
+			self::migrate_schema_v3( $p, $charset_collate );
+		}
+
 		update_option( 'vtc_tp_db_version', self::DB_VERSION );
+	}
+
+	/**
+	 * Blauwdruk-versies, basis/afwijkend, week-claims (schema 3).
+	 *
+	 * @param string $charset_collate wpdb collate.
+	 */
+	private static function migrate_schema_v3( $p, $charset_collate ) {
+		global $wpdb;
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+
+		dbDelta(
+			"CREATE TABLE {$p}vtc_tp_blueprint_version (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				blueprint_id bigint(20) unsigned NOT NULL,
+				label varchar(191) NOT NULL DEFAULT '',
+				is_published tinyint(1) NOT NULL DEFAULT 0,
+				created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY  (id),
+				KEY blueprint_id (blueprint_id),
+				KEY bp_published (blueprint_id,is_published)
+			) $charset_collate;"
+		);
+		dbDelta(
+			"CREATE TABLE {$p}vtc_tp_deviation_week (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				deviation_blueprint_id bigint(20) unsigned NOT NULL,
+				iso_week varchar(12) NOT NULL,
+				created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY  (id),
+				UNIQUE KEY iso_week (iso_week),
+				KEY deviation_blueprint_id (deviation_blueprint_id)
+			) $charset_collate;"
+		);
+
+		$bp_table = "{$p}vtc_tp_blueprint";
+		if ( ! self::column_exists( $bp_table, 'kind' ) ) {
+			$wpdb->query( "ALTER TABLE {$bp_table} ADD COLUMN kind tinyint(3) unsigned NOT NULL DEFAULT 0" );
+		}
+		if ( ! self::column_exists( $bp_table, 'parent_base_id' ) ) {
+			$wpdb->query( "ALTER TABLE {$bp_table} ADD COLUMN parent_base_id bigint(20) unsigned DEFAULT NULL" );
+		}
+		if ( ! self::column_exists( $bp_table, 'editing_version_id' ) ) {
+			$wpdb->query( "ALTER TABLE {$bp_table} ADD COLUMN editing_version_id bigint(20) unsigned DEFAULT NULL" );
+		}
+		$wpdb->query( "UPDATE {$bp_table} SET kind = 0 WHERE kind IS NULL" );
+
+		$sd = "{$p}vtc_tp_slot_draft";
+		$sp = "{$p}vtc_tp_slot_published";
+		if ( ! self::column_exists( $sd, 'blueprint_version_id' ) ) {
+			$wpdb->query( "ALTER TABLE {$sd} ADD COLUMN blueprint_version_id bigint(20) unsigned DEFAULT NULL" );
+		}
+		if ( ! self::column_exists( $sp, 'blueprint_version_id' ) ) {
+			$wpdb->query( "ALTER TABLE {$sp} ADD COLUMN blueprint_version_id bigint(20) unsigned DEFAULT NULL" );
+		}
+
+		$bps = $wpdb->get_col( "SELECT id FROM {$bp_table} ORDER BY id ASC" );
+		foreach ( $bps as $bid ) {
+			$bid = (int) $bid;
+			$vc   = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$p}vtc_tp_blueprint_version WHERE blueprint_id = %d", $bid ) );
+			if ( $vc < 1 ) {
+				self::insert_default_version_for_blueprint( $wpdb, $p, $bid );
+			}
+			$vid = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$p}vtc_tp_blueprint_version WHERE blueprint_id = %d AND is_published = 1 ORDER BY id ASC LIMIT 1", $bid ) );
+			if ( ! $vid ) {
+				$vid = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$p}vtc_tp_blueprint_version WHERE blueprint_id = %d ORDER BY id ASC LIMIT 1", $bid ) );
+				if ( $vid ) {
+					$wpdb->update( "{$p}vtc_tp_blueprint_version", array( 'is_published' => 1 ), array( 'id' => $vid ), array( '%d' ), array( '%d' ) );
+				}
+			}
+			if ( $vid ) {
+				$wpdb->query(
+					$wpdb->prepare(
+						"UPDATE {$sd} SET blueprint_version_id = %d WHERE blueprint_id = %d AND (blueprint_version_id IS NULL OR blueprint_version_id = 0)",
+						$vid,
+						$bid
+					)
+				);
+				$wpdb->query(
+					$wpdb->prepare(
+						"UPDATE {$sp} SET blueprint_version_id = %d WHERE blueprint_id = %d AND (blueprint_version_id IS NULL OR blueprint_version_id = 0)",
+						$vid,
+						$bid
+					)
+				);
+				$wpdb->update( $bp_table, array( 'editing_version_id' => $vid ), array( 'id' => $bid ), array( '%d' ), array( '%d' ) );
+			}
+		}
+	}
+
+	/**
+	 * Eerste gepubliceerde versie voor een blauwdruk (migratie / nieuwe site).
+	 *
+	 * @param wpdb   $wpdb wpdb.
+	 * @param string $p    table prefix with underscore.
+	 * @param int    $blueprint_id Blueprint id.
+	 */
+	private static function insert_default_version_for_blueprint( $wpdb, $p, $blueprint_id ) {
+		$blueprint_id = (int) $blueprint_id;
+		if ( $blueprint_id < 1 ) {
+			return;
+		}
+		$wpdb->insert(
+			"{$p}vtc_tp_blueprint_version",
+			array(
+				'blueprint_id'  => $blueprint_id,
+				'label'         => __( 'Versie 1', 'vtc-training-planner' ),
+				'is_published'  => 1,
+			),
+			array( '%d', '%s', '%d' )
+		);
+		$vid = (int) $wpdb->insert_id;
+		if ( $vid > 0 ) {
+			$wpdb->update(
+				"{$p}vtc_tp_blueprint",
+				array( 'editing_version_id' => $vid ),
+				array( 'id' => $blueprint_id ),
+				array( '%d' ),
+				array( '%d' )
+			);
+		}
 	}
 
 	/**

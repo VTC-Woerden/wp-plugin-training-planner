@@ -110,9 +110,11 @@ class VTC_TP_Public {
 		$data = $this->schedule->get_merged_week( $week, $this->nevobo );
 		return rest_ensure_response(
 			array(
-				'iso_week'        => $data['iso_week'],
-				'used_exceptions' => $data['used_exceptions'],
-				'events'          => $data['events'],
+				'iso_week'                 => $data['iso_week'],
+				'used_exceptions'          => $data['used_exceptions'],
+				'uses_deviation_blueprint' => ! empty( $data['uses_deviation_blueprint'] ),
+				'effective_blueprint_id'   => isset( $data['effective_blueprint_id'] ) ? (int) $data['effective_blueprint_id'] : null,
+				'events'                   => $data['events'],
 			)
 		);
 	}
@@ -128,6 +130,9 @@ class VTC_TP_Public {
 		echo '<h2 class="vtc-tp-week-title">' . esc_html( sprintf( __( 'Week %s', 'vtc-training-planner' ), $data['iso_week'] ) ) . '</h2>';
 		if ( ! empty( $data['used_exceptions'] ) ) {
 			echo '<p class="vtc-tp-week-note">' . esc_html__( 'Deze week gebruikt een uitzonderingsrooster.', 'vtc-training-planner' ) . '</p>';
+		}
+		if ( ! empty( $data['uses_deviation_blueprint'] ) ) {
+			echo '<p class="vtc-tp-week-note">' . esc_html__( 'Deze week volgt een afwijkende blauwdruk.', 'vtc-training-planner' ) . '</p>';
 		}
 		if ( empty( $data['events'] ) ) {
 			echo '<p class="vtc-tp-week-empty">' . esc_html__( 'Geen trainingen of wedstrijden in deze week.', 'vtc-training-planner' ) . '</p>';

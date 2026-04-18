@@ -10,6 +10,30 @@
 		return;
 	}
 
+	/**
+	 * Bouwt de volledige REST-URL. Voegt base en route samen met één slash.
+	 * Bij plain permalinks is de basis `index.php?rest_route=/vtc-tp/v1/` — extra query (blueprint_id, iso_week)
+	 * moet dan met `&` worden geplakt, niet met `?` (anders eindigt `rest_route` verkeerd en krijg je 404).
+	 */
+	function restPath(path) {
+		var base = String(cfg.rest || '');
+		var p = String(path || '').replace(/^\//, '');
+		if (!base) {
+			return p;
+		}
+		if (base.slice(-1) !== '/') {
+			base += '/';
+		}
+		var qPos = p.indexOf('?');
+		var routePart = qPos >= 0 ? p.slice(0, qPos) : p;
+		var extraQuery = qPos >= 0 ? p.slice(qPos + 1) : '';
+		var url = base + routePart;
+		if (extraQuery) {
+			url += (url.indexOf('?') !== -1 ? '&' : '?') + extraQuery;
+		}
+		return url;
+	}
+
 	var HOUR_START = 8;
 	var HOUR_END = 23;
 	var SNAP = 15;
@@ -18,6 +42,7 @@
 	var WORK_MODE_KEY = 'vtcTpWorkMode';
 	var SCHEDULE_VIEW_KEY = 'vtcTpScheduleView';
 	var ISO_WEEK_KEY = 'vtcTpIsoWeek';
+	var BLUEPRINT_ID_KEY = 'vtcTpBlueprintId';
 
 	var TEAM_COLORS = [
 		'#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
@@ -49,6 +74,20 @@
 			if (w) return w;
 		} catch (e) { /* ignore */ }
 		return cfg.currentIsoWeek || '2026-W01';
+	}
+
+	function loadBlueprintId() {
+		try {
+			var b = sessionStorage.getItem(BLUEPRINT_ID_KEY);
+			if (b) return parseInt(b, 10) || 0;
+		} catch (e2) { /* ignore */ }
+		return cfg.baseBlueprintId ? parseInt(cfg.baseBlueprintId, 10) : 0;
+	}
+
+	function persistBlueprintId(id) {
+		try {
+			sessionStorage.setItem(BLUEPRINT_ID_KEY, String(id));
+		} catch (e3) { /* ignore */ }
 	}
 
 	function normalizeIsoWeekStr(s) {
@@ -88,25 +127,53 @@
 			var iw = normalizeIsoWeekStr(state.isoWeek) || state.isoWeek;
 			return api('admin/planner-week?iso_week=' + encodeURIComponent(iw));
 		}
-		return api('admin/planner');
+		var path = 'admin/planner';
+		var bid = state.blueprintId || cfg.baseBlueprintId || 0;
+		if (bid) {
+			path += '?blueprint_id=' + encodeURIComponent(String(bid));
+		}
+		return api(path);
 	}
 
 	function applyLoadedPlannerData(data) {
 		if (!data.unavailability) data.unavailability = [];
 		state.data = data;
 		state.lastLoadError = null;
+		// Alleen in blauwdruk-modus server-blauwdruk overnemen; weekweergave toont effectieve BP en mag je keuze voor het blauwdruk-tabblad niet overschrijven.
+		if (data.planner_scope === 'blueprint' && data.blueprint_id) {
+			state.blueprintId = data.blueprint_id;
+			persistBlueprintId(data.blueprint_id);
+			if (data.blueprint_name) {
+				var found = state.blueprintsList.some(function (b) {
+					return Number(b.id) === Number(data.blueprint_id);
+				});
+				if (!found) {
+					state.blueprintsList = state.blueprintsList.concat([{
+						id: data.blueprint_id,
+						name: data.blueprint_name,
+						kind: data.blueprint_kind != null ? data.blueprint_kind : 0
+					}]);
+				}
+			}
+		}
 		if (data.iso_week) state.isoWeek = data.iso_week;
 		state.selectedId = null;
 		state.selectedUnavailId = null;
+		state.selectedSlotIds.clear();
 		resetPending();
 		state.localDirty = false;
 		state.tempSlotId = -1;
 		state.tempUnavailId = -1;
+		state.teamPickerOpen = false;
+		state.teamPickerShowAll = false;
 	}
 
 	var state = {
 		data: null,
+		blueprintsList: [],
+		blueprintId: loadBlueprintId(),
 		selectedId: null,
+		selectedSlotIds: new Set(),
 		selectedUnavailId: null,
 		scheduleView: loadScheduleView(),
 		isoWeek: loadIsoWeek(),
@@ -118,7 +185,16 @@
 		saving: false,
 		tempSlotId: -1,
 		tempUnavailId: -1,
-		lastLoadError: null
+		lastLoadError: null,
+		teamPickerOpen: false,
+		teamPickerShowAll: false,
+		teamPickerAnchorX: 0,
+		teamPickerAnchorY: 0,
+		teamPickerVenueId: 0,
+		teamPickerDow: 0,
+		teamPickerStart: '',
+		teamPickerEnd: '',
+		teamPickerDocBound: false
 	};
 
 	var pending = {
@@ -145,6 +221,9 @@
 		} catch (e) { /* ignore */ }
 		state.selectedId = null;
 		state.selectedUnavailId = null;
+		state.selectedSlotIds.clear();
+		state.teamPickerOpen = false;
+		state.teamPickerShowAll = false;
 		render();
 	}
 
@@ -199,7 +278,7 @@
 		if (opts.body && typeof opts.body === 'string') {
 			headers['Content-Type'] = 'application/json';
 		}
-		return fetch(cfg.rest + path, {
+		return fetch(restPath(path), {
 			method: opts.method || 'GET',
 			body: opts.body,
 			credentials: 'same-origin',
@@ -261,8 +340,184 @@
 		return w > 0 ? w / TOTAL_MIN : 1;
 	}
 
+	/**
+	 * Baan onder de cursor tijdens slepen: het slepende blok zit bovenop de stack.
+	 * Sla dat element expliciet over (closest('.is-dragging') faalt zodra het blok al verplaatst is).
+	 */
+	function laneBodyUnderPointExcludingBlock(clientX, clientY, blockEl) {
+		var stack = document.elementsFromPoint(clientX, clientY);
+		for (var i = 0; i < stack.length; i++) {
+			var node = stack[i];
+			if (!node || node.nodeType !== 1) {
+				continue;
+			}
+			if (blockEl && (node === blockEl || blockEl.contains(node))) {
+				continue;
+			}
+			var lb = node.closest ? node.closest('.vtc-tppl-lane-body') : null;
+			if (lb) {
+				return lb;
+			}
+		}
+		return null;
+	}
+
 	function teamColor(id) {
 		return TEAM_COLORS[Math.abs(id) % TEAM_COLORS.length];
+	}
+
+	function syncSlotSelectionDom() {
+		document.querySelectorAll('.vtc-tppl-block').forEach(function (b) {
+			var sid = parseInt(b.getAttribute('data-slot-id'), 10);
+			b.classList.toggle('is-selected', state.selectedSlotIds.has(sid));
+		});
+	}
+
+	function teamTrainingsRequired(t) {
+		var n = t.trainings_per_week;
+		if (n == null || n === '') return 2;
+		return Math.max(0, parseInt(n, 10) || 0);
+	}
+
+	function slotsListForTeamCount(weekReadonly) {
+		if (!state.data) return [];
+		if (weekReadonly) return state.data.baseline_slots || [];
+		return state.data.slots || [];
+	}
+
+	function countSlotsForTeam(teamId, weekReadonly) {
+		var list = slotsListForTeamCount(weekReadonly);
+		var c = 0;
+		for (var i = 0; i < list.length; i++) {
+			if (list[i].team_id === teamId) c++;
+		}
+		return c;
+	}
+
+	function getTeamOverviewRows(weekReadonly, showAll) {
+		if (!state.data || !state.data.teams) return [];
+		var out = [];
+		state.data.teams.forEach(function (t) {
+			var req = teamTrainingsRequired(t);
+			var cnt = countSlotsForTeam(t.id, weekReadonly);
+			if (showAll) {
+				out.push({ id: t.id, display_name: t.display_name, count: cnt, required: req });
+			} else if (req > 0 && cnt < req) {
+				out.push({ id: t.id, display_name: t.display_name, count: cnt, required: req });
+			}
+		});
+		return out;
+	}
+
+	function computePlacementFromPoint(body, clientX) {
+		var venueId = parseInt(body.getAttribute('data-venue-id'), 10);
+		var dow = parseInt(body.getAttribute('data-dow'), 10);
+		var rect = body.getBoundingClientRect();
+		var x = clientX - rect.left;
+		var frac = Math.max(0, Math.min(1, rect.width > 0 ? x / rect.width : 0));
+		var m = HOUR_START * 60 + frac * TOTAL_MIN;
+		m = Math.round(m / SNAP) * SNAP;
+		var start = minToTime(m);
+		var end = minToTime(m + DEFAULT_LEN);
+		if (timeToMin(end) > HOUR_END * 60) {
+			end = minToTime(HOUR_END * 60);
+			start = minToTime(timeToMin(end) - DEFAULT_LEN);
+		}
+		return { venue_id: venueId, day_of_week: dow, start_time: start, end_time: end };
+	}
+
+	function clampTeamPickerPosition(left, top) {
+		var pw = 240;
+		var ph = 280;
+		var margin = 8;
+		var vw = window.innerWidth || 800;
+		var vh = window.innerHeight || 600;
+		return {
+			left: Math.min(Math.max(margin, left), vw - pw - margin),
+			top: Math.min(Math.max(margin, top), vh - ph - margin)
+		};
+	}
+
+	function buildTeamPickerPopHtml(weekReadonly, inhuur, hasTeams) {
+		if (!state.teamPickerOpen || inhuur || !hasTeams) return '';
+		var pos = clampTeamPickerPosition(state.teamPickerAnchorX + 4, state.teamPickerAnchorY + 8);
+		var oRows = getTeamOverviewRows(weekReadonly, state.teamPickerShowAll);
+		var h = '<div id="vtc-tppl-team-picker" class="vtc-tppl-team-picker" role="dialog" aria-label="' + esc(__('teamOverviewTitle')) + '" style="left:' + pos.left + 'px;top:' + pos.top + 'px">';
+		h += '<ul class="vtc-tppl-team-picker-list">';
+		if (!oRows.length) {
+			h += '<li class="vtc-tppl-team-picker-empty">' + esc(__('teamOverviewEmpty')) + '</li>';
+		} else {
+			oRows.forEach(function (row) {
+				h += '<li><button type="button" class="vtc-tppl-team-picker-item" data-team-id="' + row.id + '">';
+				h += '<span class="vtc-tppl-team-picker-dot" style="background:' + teamColor(row.id) + '"></span>';
+				h += '<span class="vtc-tppl-team-picker-name">' + esc(row.display_name) + '</span>';
+				h += '</button></li>';
+			});
+		}
+		h += '</ul>';
+		h += '<hr class="vtc-tppl-team-picker-divider" />';
+		h += '<div class="vtc-tppl-team-picker-footer">';
+		h += '<label class="vtc-tppl-team-picker-all"><input type="checkbox" id="vtc-tppl-team-picker-show-all"' + (state.teamPickerShowAll ? ' checked' : '') + ' /> ' + esc(__('teamOverviewShowAll')) + '</label>';
+		h += '</div></div>';
+		return h;
+	}
+
+	function placeTeamAtPickerSlot(teamId) {
+		if (!state.data) return;
+		if (isWeekScope() && !state.data.has_exception && !state.data.uses_deviation_blueprint) return;
+		var team = findTeam(teamId);
+		var tid = allocSlotTempId();
+		mergeSlot({
+			id: tid,
+			team_id: teamId,
+			venue_id: state.teamPickerVenueId,
+			day_of_week: state.teamPickerDow,
+			start_time: state.teamPickerStart,
+			end_time: state.teamPickerEnd,
+			team_name: team ? team.display_name : ''
+		});
+		state.teamPickerOpen = false;
+		state.teamPickerShowAll = false;
+		markDirty();
+		render();
+		showToast(__('added'), true);
+	}
+
+	function removeTeamPickerDom() {
+		var p = document.getElementById('vtc-tppl-team-picker');
+		if (p && p.parentNode) {
+			p.parentNode.removeChild(p);
+		}
+	}
+
+	function onDocumentMouseDownClosePicker(e) {
+		if (!state.teamPickerOpen) return;
+		var p = document.getElementById('vtc-tppl-team-picker');
+		if (p && p.contains(e.target)) return;
+		state.teamPickerOpen = false;
+		state.teamPickerShowAll = false;
+		removeTeamPickerDom();
+	}
+
+	function onLaneClickOpenTeamPicker(e) {
+		if (e.target !== e.currentTarget) return;
+		if (state.workMode !== 'teams') return;
+		if (!state.data || !state.data.teams || !state.data.teams.length) return;
+		var weekScope = isWeekScope();
+		var weekReadonly = weekScope && !state.data.has_exception && !state.data.uses_deviation_blueprint;
+		if (weekReadonly) return;
+		var place = computePlacementFromPoint(e.currentTarget, e.clientX);
+		state.teamPickerVenueId = place.venue_id;
+		state.teamPickerDow = place.day_of_week;
+		state.teamPickerStart = place.start_time;
+		state.teamPickerEnd = place.end_time;
+		state.teamPickerAnchorX = e.clientX;
+		state.teamPickerAnchorY = e.clientY;
+		state.teamPickerOpen = true;
+		state.teamPickerShowAll = false;
+		e.preventDefault();
+		e.stopPropagation();
+		render();
 	}
 
 	function showToast(msg, ok) {
@@ -398,7 +653,8 @@
 		}
 		if (pubBtn) {
 			pubBtn.disabled = state.saving;
-			pubBtn.style.display = isWeekScope() ? 'none' : '';
+			var hidePub = isWeekScope() && !(state.data && state.data.uses_deviation_blueprint && !state.data.has_exception);
+			pubBtn.style.display = hidePub ? 'none' : '';
 		}
 		if (reloadBtn) reloadBtn.disabled = state.saving;
 		if (banner) {
@@ -406,11 +662,96 @@
 		}
 	}
 
+	function effectiveBlueprintIdForApi() {
+		var bid = state.blueprintId || cfg.baseBlueprintId || 0;
+		return bid ? bid : 0;
+	}
+
+	function bpQuery() {
+		var bid = effectiveBlueprintIdForApi();
+		return bid ? ('?blueprint_id=' + encodeURIComponent(String(bid))) : '';
+	}
+
+	function withBlueprintBody(obj) {
+		var o = obj || {};
+		o.blueprint_id = effectiveBlueprintIdForApi();
+		return o;
+	}
+
+	function runBlueprintSlotSaveChain(delSlots, delUn, patchSlotIds, patchUnIds, newSlots, newUn) {
+		var q = bpQuery();
+		return Promise.all(
+			delSlots.map(function (sid) {
+				return api('admin/slots/' + sid + q, { method: 'DELETE' });
+			})
+		)
+			.then(function () {
+				return Promise.all(
+					delUn.map(function (uid) {
+						return api('admin/unavailability/' + uid + q, { method: 'DELETE' });
+					})
+				);
+			})
+			.then(function () {
+				return Promise.all(
+					patchSlotIds.map(function (sk) {
+						var id = parseInt(sk, 10);
+						return api('admin/slots/' + id + q, {
+							method: 'PATCH',
+							body: JSON.stringify(withBlueprintBody(pending.slotPatches[sk]))
+						});
+					})
+				);
+			})
+			.then(function () {
+				return Promise.all(
+					patchUnIds.map(function (uk) {
+						var id = parseInt(uk, 10);
+						return api('admin/unavailability/' + id + q, {
+							method: 'PATCH',
+							body: JSON.stringify(withBlueprintBody(pending.unavailPatches[uk]))
+						});
+					})
+				);
+			})
+			.then(function () {
+				return Promise.all(
+					newSlots.map(function (s) {
+						return api('admin/slots' + q, {
+							method: 'POST',
+							body: JSON.stringify(withBlueprintBody({
+								team_id: s.team_id,
+								venue_id: s.venue_id,
+								day_of_week: s.day_of_week,
+								start_time: s.start_time,
+								end_time: s.end_time
+							}))
+						});
+					})
+				);
+			})
+			.then(function () {
+				return Promise.all(
+					newUn.map(function (u) {
+						return api('admin/unavailability' + q, {
+							method: 'POST',
+							body: JSON.stringify(withBlueprintBody({
+								venue_id: u.venue_id,
+								day_of_week: u.day_of_week,
+								start_time: u.start_time,
+								end_time: u.end_time
+							}))
+						});
+					})
+				);
+			});
+	}
+
 	function saveAll() {
 		if (!state.localDirty || state.saving) {
 			return Promise.resolve();
 		}
-		if (isWeekScope() && !state.data.has_exception) {
+		if (isWeekScope() && !state.data.has_exception && !state.data.uses_deviation_blueprint) {
 			return Promise.resolve();
 		}
 		state.saving = true;
@@ -432,7 +773,8 @@
 		});
 
 		var chain;
-		if (isWeekScope()) {
+		var weekException = isWeekScope() && state.data.has_exception;
+		if (weekException) {
 			var ewid = state.data.exception_week_id;
 			chain = Promise.all(
 				delSlots.map(function (sid) {
@@ -468,71 +810,7 @@
 					);
 				});
 		} else {
-			chain = Promise.all(
-				delSlots.map(function (sid) {
-					return api('admin/slots/' + sid, { method: 'DELETE' });
-				})
-			)
-				.then(function () {
-					return Promise.all(
-						delUn.map(function (uid) {
-							return api('admin/unavailability/' + uid, { method: 'DELETE' });
-						})
-					);
-				})
-				.then(function () {
-					return Promise.all(
-						patchSlotIds.map(function (sk) {
-							var id = parseInt(sk, 10);
-							return api('admin/slots/' + id, {
-								method: 'PATCH',
-								body: JSON.stringify(pending.slotPatches[sk])
-							});
-						})
-					);
-				})
-				.then(function () {
-					return Promise.all(
-						patchUnIds.map(function (uk) {
-							var id = parseInt(uk, 10);
-							return api('admin/unavailability/' + id, {
-								method: 'PATCH',
-								body: JSON.stringify(pending.unavailPatches[uk])
-							});
-						})
-					);
-				})
-				.then(function () {
-					return Promise.all(
-						newSlots.map(function (s) {
-							return api('admin/slots', {
-								method: 'POST',
-								body: JSON.stringify({
-									team_id: s.team_id,
-									venue_id: s.venue_id,
-									day_of_week: s.day_of_week,
-									start_time: s.start_time,
-									end_time: s.end_time
-								})
-							});
-						})
-					);
-				})
-				.then(function () {
-					return Promise.all(
-						newUn.map(function (u) {
-							return api('admin/unavailability', {
-								method: 'POST',
-								body: JSON.stringify({
-									venue_id: u.venue_id,
-									day_of_week: u.day_of_week,
-									start_time: u.start_time,
-									end_time: u.end_time
-								})
-							});
-						})
-					);
-				});
+			chain = runBlueprintSlotSaveChain(delSlots, delUn, patchSlotIds, patchUnIds, newSlots, newUn);
 		}
 
 		return chain
@@ -589,7 +867,7 @@
 						try {
 							sessionStorage.setItem(SCHEDULE_VIEW_KEY, 'blueprint');
 						} catch (e2) { /* ignore */ }
-						return api('admin/planner')
+						return plannerApiGet()
 							.then(function (data) {
 								applyLoadedPlannerData(data);
 								render();
@@ -701,7 +979,7 @@
 		var weekScope = isWeekScope();
 		var inhuur = state.workMode === 'inhuur' && !weekScope;
 		var hasTeams = d.teams && d.teams.length > 0;
-		var weekReadonly = weekScope && !d.has_exception;
+		var weekReadonly = weekScope && !d.has_exception && !d.uses_deviation_blueprint;
 		var iwForInput = normalizeIsoWeekStr(d.iso_week || state.isoWeek) || state.isoWeek;
 
 		var html = '';
@@ -747,13 +1025,48 @@
 			}
 			html += '</div>';
 		}
+		var curBp = effectiveBlueprintIdForApi();
+		var bpOptions = (state.blueprintsList && state.blueprintsList.length)
+			? state.blueprintsList
+			: (d.blueprint_id ? [{ id: d.blueprint_id, name: d.blueprint_name || ('#' + d.blueprint_id), kind: d.blueprint_kind != null ? d.blueprint_kind : 0 }] : []);
+		if (!weekScope && bpOptions.length) {
+			html += '<div class="vtc-tppl-toolbar-row vtc-tppl-blueprint-bar">';
+			html += '<label class="vtc-tppl-blueprint-field"><span>' + esc(__('blueprintLabel')) + '</span> ';
+			html += '<select id="vtc-tppl-blueprint-select">';
+			bpOptions.forEach(function (b) {
+				var sel = Number(b.id) === Number(curBp) ? ' selected' : '';
+				var lab = b.name + (Number(b.kind) === 1 ? ' (afw.)' : '');
+				html += '<option value="' + esc(String(b.id)) + '"' + sel + '>' + esc(lab) + '</option>';
+			});
+			html += '</select></label></div>';
+		}
+		if (!weekScope && d.versions && d.versions.length) {
+			var activeVid = d.editing_version_id || d.published_version_id;
+			html += '<div class="vtc-tppl-toolbar-row vtc-tppl-version-bar">';
+			html += '<label class="vtc-tppl-version-field"><span>' + esc(__('versionLabel')) + '</span> ';
+			html += '<select id="vtc-tppl-version-select">';
+			d.versions.forEach(function (v) {
+				var sel = Number(v.id) === Number(activeVid) ? ' selected' : '';
+				var lab = (v.label || ('#' + v.id)) + (v.is_published ? ' ' + __('versionLive') : '');
+				html += '<option value="' + esc(String(v.id)) + '"' + sel + '>' + esc(lab) + '</option>';
+			});
+			html += '</select></label> ';
+			html += '<button type="button" class="button" id="vtc-tppl-new-version">' + esc(__('newConceptVersion')) + '</button>';
+			html += '</div>';
+		}
 		if (!weekScope && d.draft_differs) {
+			html += '<p class="vtc-tppl-draft-banner">' + esc(__('draftHint')) + '</p>';
+		}
+		if (weekScope && d.uses_deviation_blueprint && !d.has_exception && d.draft_differs) {
 			html += '<p class="vtc-tppl-draft-banner">' + esc(__('draftHint')) + '</p>';
 		}
 		html += '</div>';
 		html += '<p id="vtc-tppl-dirty-banner" class="vtc-tppl-dirty-banner" hidden>' + esc(__('dirtyBanner')) + '</p>';
 		if (weekScope) {
 			html += '<p class="vtc-tppl-help">' + esc(__('weekHelp')) + '</p>';
+			if (d.uses_deviation_blueprint && !d.has_exception) {
+				html += '<p class="vtc-tppl-week-hint vtc-tppl-week-hint--deviation">' + esc(__('deviationActiveWeek')) + '</p>';
+			}
 			html += '<p class="vtc-tppl-week-hint">' + esc(d.has_exception ? __('weekHasExceptionHint') : __('weekNoExceptionHint')) + '</p>';
 		}
 		if (inhuur) {
@@ -771,6 +1084,9 @@
 		} else {
 			html += '<h3>Teams</h3>';
 			if (hasTeams) {
+				if (!weekReadonly) {
+					html += '<p class="vtc-tppl-sidebar-hint vtc-tppl-sidebar-hint--overview">' + esc(__('teamOverviewLaneHelp')) + '</p>';
+				}
 				d.teams.forEach(function (t) {
 					html += '<button type="button" class="vtc-tppl-team-chip" draggable="true" data-team-id="' + t.id + '" style="border-left:4px solid ' + teamColor(t.id) + '">' + esc(t.display_name) + '</button>';
 				});
@@ -798,10 +1114,14 @@
 				(d.unavailability || []).forEach(function (u) {
 					if (u.day_of_week !== dow || u.venue_id !== v.id) return;
 					var usel = u.id === state.selectedUnavailId ? ' is-selected' : '';
-					html += '<div class="vtc-tppl-unavail' + usel + '" data-unavail-id="' + u.id + '" style="left:' + slotStyleLeftPct(u.start_time) + '%;width:' + slotStyleWidthPct(u.start_time, u.end_time) + '%">';
+					var unavailEditable = inhuur && !weekScope;
+					var unRo = !unavailEditable ? ' vtc-tppl-unavail--readonly' : '';
+					html += '<div class="vtc-tppl-unavail' + usel + unRo + '" data-unavail-id="' + u.id + '" style="left:' + slotStyleLeftPct(u.start_time) + '%;width:' + slotStyleWidthPct(u.start_time, u.end_time) + '%">';
 					html += '<div class="vtc-tppl-unavail-handle vtc-tppl-unavail-handle--left" data-unavail-id="' + u.id + '"></div>';
 					html += '<span class="vtc-tppl-unavail-label">' + esc(u.start_time + '–' + u.end_time) + '</span>';
-					html += '<button type="button" class="vtc-tppl-unavail-x" data-unavail-id="' + u.id + '">&times;</button>';
+					if (unavailEditable) {
+						html += '<button type="button" class="vtc-tppl-unavail-x" data-unavail-id="' + u.id + '">&times;</button>';
+					}
 					html += '<div class="vtc-tppl-unavail-handle vtc-tppl-unavail-handle--right" data-unavail-id="' + u.id + '"></div>';
 					html += '</div>';
 				});
@@ -809,16 +1129,17 @@
 					var slotList = weekReadonly ? (d.baseline_slots || []) : (d.slots || []);
 					slotList.forEach(function (s) {
 						if (s.day_of_week !== dow || s.venue_id !== v.id) return;
-						var sel = !weekReadonly && s.id === state.selectedId ? ' is-selected' : '';
+						var sel = !weekReadonly && state.selectedSlotIds.has(s.id) ? ' is-selected' : '';
 						var baseCls = weekReadonly ? ' vtc-tppl-block--baseline' : '';
 						html += '<div class="vtc-tppl-block' + baseCls + sel + '" data-slot-id="' + s.id + '" style="left:' + slotStyleLeftPct(s.start_time) + '%;width:' + slotStyleWidthPct(s.start_time, s.end_time) + '%;background:' + teamColor(s.team_id) + '">';
 						if (!weekReadonly) {
+							html += '<div class="vtc-tppl-block-resize vtc-tppl-block-resize--left" data-slot-id="' + s.id + '"></div>';
 							html += '<button type="button" class="vtc-tppl-block-x" data-slot-id="' + s.id + '" title="Verwijderen">&times;</button>';
 						}
 						html += '<span class="vtc-tppl-block-title">' + esc(s.team_name) + '</span>';
 						html += '<span class="vtc-tppl-block-time">' + esc(s.start_time + '–' + s.end_time) + '</span>';
 						if (!weekReadonly) {
-							html += '<div class="vtc-tppl-block-resize" data-slot-id="' + s.id + '"></div>';
+							html += '<div class="vtc-tppl-block-resize vtc-tppl-block-resize--right" data-slot-id="' + s.id + '"></div>';
 						}
 						html += '</div>';
 					});
@@ -828,6 +1149,7 @@
 			html += '</div></div></div>';
 		}
 		html += '</div></div></div></div>';
+		html += buildTeamPickerPopHtml(weekReadonly, inhuur, hasTeams);
 
 		root.innerHTML = html;
 		bind();
@@ -848,6 +1170,71 @@
 		if (reloadBtn) {
 			reloadBtn.addEventListener('click', function () {
 				loadPlanner({ force: true, initial: true });
+			});
+		}
+
+		var bpSel = document.getElementById('vtc-tppl-blueprint-select');
+		if (bpSel) {
+			bpSel.addEventListener('change', function () {
+				var nid = parseInt(bpSel.value, 10);
+				var cur = effectiveBlueprintIdForApi();
+				if (!nid || Number(nid) === Number(cur)) return;
+				if (!confirmDiscardIfDirty()) {
+					bpSel.value = String(cur);
+					return;
+				}
+				state.blueprintId = nid;
+				persistBlueprintId(nid);
+				resetPending();
+				state.localDirty = false;
+				loadPlanner({ force: true, initial: true });
+			});
+		}
+
+		var verSel = document.getElementById('vtc-tppl-version-select');
+		if (verSel && state.data) {
+			verSel.addEventListener('change', function () {
+				var nid = parseInt(verSel.value, 10);
+				var cur = state.data.editing_version_id || state.data.published_version_id;
+				if (!nid || Number(nid) === Number(cur)) return;
+				if (!confirmDiscardIfDirty()) {
+					verSel.value = String(cur);
+					return;
+				}
+				api('admin/blueprint-editing-version', {
+					method: 'POST',
+					body: JSON.stringify({ blueprint_id: effectiveBlueprintIdForApi(), version_id: nid })
+				})
+					.then(function () {
+						resetPending();
+						state.localDirty = false;
+						return loadPlanner({ force: true, initial: true });
+					})
+					.catch(function (err) {
+						verSel.value = String(cur);
+						showToast((err && err.message) || __('versionSwitchErr'), false);
+					});
+			});
+		}
+
+		var newVerBtn = document.getElementById('vtc-tppl-new-version');
+		if (newVerBtn) {
+			newVerBtn.addEventListener('click', function () {
+				var lab = window.prompt(__('newConceptVersionPrompt'), '');
+				if (lab === null) return;
+				api('admin/blueprint-versions', {
+					method: 'POST',
+					body: JSON.stringify({ blueprint_id: effectiveBlueprintIdForApi(), label: lab })
+				})
+					.then(function () {
+						showToast(__('versionCreated'), true);
+						resetPending();
+						state.localDirty = false;
+						return loadPlanner({ force: true, initial: true });
+					})
+					.catch(function (err) {
+						showToast((err && err.message) || __('saveErr'), false);
+					});
 			});
 		}
 
@@ -880,7 +1267,7 @@
 		});
 
 		var weekScope = isWeekScope();
-		var weekReadonly = weekScope && !state.data.has_exception;
+		var weekReadonly = weekScope && !state.data.has_exception && !state.data.uses_deviation_blueprint;
 		var inhuur = state.workMode === 'inhuur' && !weekScope;
 
 		var isoWeekInput = document.getElementById('vtc-tppl-iso-week-input');
@@ -966,8 +1353,34 @@
 					body.classList.remove('is-drop-target');
 				});
 				body.addEventListener('drop', onDropTeam);
+				if (state.data.teams && state.data.teams.length) {
+					body.addEventListener('click', onLaneClickOpenTeamPicker);
+				}
 			}
 		});
+
+		var picker = document.getElementById('vtc-tppl-team-picker');
+		if (picker) {
+			picker.querySelectorAll('.vtc-tppl-team-picker-item').forEach(function (btn) {
+				btn.addEventListener('click', function (ev) {
+					ev.preventDefault();
+					ev.stopPropagation();
+					var tid = parseInt(btn.getAttribute('data-team-id'), 10);
+					if (tid) placeTeamAtPickerSlot(tid);
+				});
+			});
+			var pAll = document.getElementById('vtc-tppl-team-picker-show-all');
+			if (pAll) {
+				pAll.addEventListener('change', function () {
+					state.teamPickerShowAll = !!pAll.checked;
+					render();
+				});
+			}
+		}
+		if (!state.teamPickerDocBound) {
+			state.teamPickerDocBound = true;
+			document.addEventListener('mousedown', onDocumentMouseDownClosePicker, true);
+		}
 
 		if (!inhuur) {
 			root.querySelectorAll('.vtc-tppl-block:not(.vtc-tppl-block--baseline)').forEach(function (block) {
@@ -985,12 +1398,13 @@
 				rz.addEventListener('pointerdown', function (e) {
 					e.stopPropagation();
 					e.preventDefault();
-					startResize(e, parseInt(rz.getAttribute('data-slot-id'), 10));
+					var edge = rz.classList.contains('vtc-tppl-block-resize--left') ? 'left' : 'right';
+					startResize(e, parseInt(rz.getAttribute('data-slot-id'), 10), edge);
 				});
 			});
 		}
 
-		if (!weekScope) {
+		if (!weekScope && inhuur) {
 			root.querySelectorAll('.vtc-tppl-unavail').forEach(function (el) {
 				el.addEventListener('pointerdown', onUnavailPointerDown);
 				el.addEventListener('dblclick', onUnavailDblClick);
@@ -1031,9 +1445,22 @@
 	function onKeyDown(e) {
 		var t = e.target;
 		if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-		if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedId && state.workMode === 'teams') {
+		if (e.key === 'Escape' && state.teamPickerOpen) {
+			state.teamPickerOpen = false;
+			state.teamPickerShowAll = false;
+			removeTeamPickerDom();
+			return;
+		}
+		if ((e.key === 'Delete' || e.key === 'Backspace') && state.workMode === 'teams' && state.selectedSlotIds.size > 0) {
 			e.preventDefault();
-			deleteSlot(state.selectedId);
+			var toDel = Array.from(state.selectedSlotIds);
+			toDel.forEach(function (sid) {
+				deleteSlot(sid, { skipRender: true });
+			});
+			state.selectedSlotIds.clear();
+			state.selectedId = null;
+			render();
+			return;
 		}
 		if ((e.key === 'Delete' || e.key === 'Backspace') && state.selectedUnavailId && state.workMode === 'inhuur' && !isWeekScope()) {
 			e.preventDefault();
@@ -1351,45 +1778,105 @@
 		if (e.target.closest('.vtc-tppl-block-x') || e.target.closest('.vtc-tppl-block-resize')) return;
 		var block = e.currentTarget;
 		var id = parseInt(block.getAttribute('data-slot-id'), 10);
+		var multi = e.ctrlKey || e.metaKey;
+		if (multi) {
+			if (state.selectedSlotIds.has(id)) {
+				state.selectedSlotIds.delete(id);
+			} else {
+				state.selectedSlotIds.add(id);
+			}
+			state.selectedId = state.selectedSlotIds.size ? id : null;
+			state.selectedUnavailId = null;
+			document.querySelectorAll('.vtc-tppl-unavail').forEach(function (u) {
+				u.classList.remove('is-selected');
+			});
+			syncSlotSelectionDom();
+			return;
+		}
+		if (!state.selectedSlotIds.has(id) || state.selectedSlotIds.size <= 1) {
+			state.selectedSlotIds.clear();
+			state.selectedSlotIds.add(id);
+		}
 		state.selectedId = id;
 		state.selectedUnavailId = null;
-		document.querySelectorAll('.vtc-tppl-block').forEach(function (b) {
-			b.classList.toggle('is-selected', parseInt(b.getAttribute('data-slot-id'), 10) === id);
-		});
 		document.querySelectorAll('.vtc-tppl-unavail').forEach(function (u) {
 			u.classList.remove('is-selected');
 		});
+		syncSlotSelectionDom();
 		if (e.button !== 0) return;
 		var slot = findSlot(id);
 		if (!slot) return;
 		var body = block.closest('.vtc-tppl-lane-body');
 		if (!body) return;
-		drag = {
-			type: 'move',
-			id: id,
-			body: body,
-			startX: e.clientX,
-			pxPerMin: pxPerMinFromBody(body),
-			origStart: timeToMin(slot.start_time),
-			origEnd: timeToMin(slot.end_time),
-			slot: slot
-		};
-		block.classList.add('is-dragging');
-		block.setPointerCapture(e.pointerId);
-		block.addEventListener('pointermove', onBlockPointerMove);
-		block.addEventListener('pointerup', onBlockPointerUp);
-		block.addEventListener('pointercancel', onBlockPointerUp);
+		var isGroup = state.selectedSlotIds.size > 1;
+		var items = [];
+		if (isGroup) {
+			state.selectedSlotIds.forEach(function (sid) {
+				var sl = findSlot(sid);
+				if (!sl) return;
+				items.push({
+					id: sid,
+					slot: sl,
+					origStart: timeToMin(sl.start_time),
+					origEnd: timeToMin(sl.end_time)
+				});
+			});
+			if (items.length < 2) {
+				isGroup = false;
+			}
+		}
+		if (isGroup) {
+			drag = {
+				type: 'moveGroup',
+				primaryId: id,
+				body: body,
+				startX: e.clientX,
+				pxPerMin: pxPerMinFromBody(body),
+				items: items
+			};
+			document.querySelectorAll('.vtc-tppl-block.is-selected').forEach(function (b) {
+				b.classList.add('is-dragging');
+			});
+			block.setPointerCapture(e.pointerId);
+			block.addEventListener('pointermove', onBlockPointerMove);
+			block.addEventListener('pointerup', onBlockPointerUp);
+			block.addEventListener('pointercancel', onBlockPointerUp);
+		} else {
+			drag = {
+				type: 'move',
+				id: id,
+				body: body,
+				blockEl: block,
+				pointerId: e.pointerId,
+				startX: e.clientX,
+				pxPerMin: pxPerMinFromBody(body),
+				origStart: timeToMin(slot.start_time),
+				origEnd: timeToMin(slot.end_time),
+				slot: slot
+			};
+			block.classList.add('is-dragging');
+			/* Geen setPointerCapture op het blok: reparent (appendChild) laat capture in sommige browsers vallen.
+			 * Document-listeners (capture) blijven tot loslaten werken. */
+			document.addEventListener('pointermove', onBlockPointerMove, true);
+			document.addEventListener('pointerup', onBlockPointerUp, true);
+			document.addEventListener('pointercancel', onBlockPointerUp, true);
+		}
 	}
 
-	function startResize(e, id) {
+	function startResize(e, id, edge) {
 		var slot = findSlot(id);
 		if (!slot) return;
 		var block = document.querySelector('.vtc-tppl-block[data-slot-id="' + id + '"]');
 		if (!block) return;
 		var body = block.closest('.vtc-tppl-lane-body');
 		if (!body) return;
+		state.selectedSlotIds.clear();
+		state.selectedSlotIds.add(id);
+		state.selectedId = id;
+		syncSlotSelectionDom();
 		drag = {
 			type: 'resize',
+			edge: edge === 'left' ? 'left' : 'right',
 			id: id,
 			body: body,
 			startX: e.clientX,
@@ -1407,9 +1894,38 @@
 
 	function onBlockPointerMove(e) {
 		if (!drag || drag.kind) return;
+		if (drag.type === 'move' && e.pointerId !== drag.pointerId) {
+			return;
+		}
 		var dx = e.clientX - drag.startX;
 		var dMin = Math.round(dx / drag.pxPerMin / SNAP) * SNAP;
 		var slot = drag.slot;
+		if (drag.type === 'moveGroup') {
+			var low = -1e9;
+			var high = 1e9;
+			drag.items.forEach(function (it) {
+				low = Math.max(low, HOUR_START * 60 - it.origStart);
+				high = Math.min(high, HOUR_END * 60 - it.origEnd);
+			});
+			var dClamped = Math.max(low, Math.min(high, dMin));
+			drag.items.forEach(function (it) {
+				var ns = it.origStart + dClamped;
+				var ne = it.origEnd + dClamped;
+				it.slot.start_time = minToTime(ns);
+				it.slot.end_time = minToTime(ne);
+				var elg = document.querySelector('.vtc-tppl-block[data-slot-id="' + it.id + '"]');
+				if (elg) {
+					elg.style.left = slotStyleLeftPct(it.slot.start_time) + '%';
+					elg.style.width = slotStyleWidthPct(it.slot.start_time, it.slot.end_time) + '%';
+					var tmg = elg.querySelector('.vtc-tppl-block-time');
+					if (tmg) tmg.textContent = it.slot.start_time + '–' + it.slot.end_time;
+				}
+			});
+			document.querySelectorAll('.vtc-tppl-lane-body').forEach(function (b) {
+				b.classList.remove('is-drop-target');
+			});
+			return;
+		}
 		if (drag.type === 'move') {
 			var ns = drag.origStart + dMin;
 			var ne = drag.origEnd + dMin;
@@ -1418,18 +1934,29 @@
 			ne = ns + len;
 			slot.start_time = minToTime(ns);
 			slot.end_time = minToTime(ne);
-			var el = document.querySelector('.vtc-tppl-block[data-slot-id="' + drag.id + '"]');
+			var el = drag.blockEl;
 			if (el) {
 				el.style.left = slotStyleLeftPct(slot.start_time) + '%';
 				el.style.width = slotStyleWidthPct(slot.start_time, slot.end_time) + '%';
 				var tm = el.querySelector('.vtc-tppl-block-time');
 				if (tm) tm.textContent = slot.start_time + '–' + slot.end_time;
 			}
-			var under = document.elementFromPoint(e.clientX, e.clientY);
-			var newBody = under && under.closest ? under.closest('.vtc-tppl-lane-body') : null;
-			document.querySelectorAll('.vtc-tppl-lane-body').forEach(function (b) {
-				b.classList.toggle('is-drop-target', newBody === b && b !== drag.body);
-			});
+			var newBody = laneBodyUnderPointExcludingBlock(e.clientX, e.clientY, el);
+			if (newBody && el && newBody !== el.parentNode) {
+				newBody.appendChild(el);
+			}
+		} else if (drag.type === 'resize' && drag.edge === 'left') {
+			var nsL = drag.origStart + dMin;
+			nsL = Math.max(HOUR_START * 60, Math.min(drag.origEnd - SNAP, nsL));
+			nsL = Math.round(nsL / SNAP) * SNAP;
+			slot.start_time = minToTime(nsL);
+			var elL = document.querySelector('.vtc-tppl-block[data-slot-id="' + drag.id + '"]');
+			if (elL) {
+				elL.style.left = slotStyleLeftPct(slot.start_time) + '%';
+				elL.style.width = slotStyleWidthPct(slot.start_time, slot.end_time) + '%';
+				var tmL = elL.querySelector('.vtc-tppl-block-time');
+				if (tmL) tmL.textContent = slot.start_time + '–' + slot.end_time;
+			}
 		} else {
 			var ne2 = drag.origEnd + dMin;
 			ne2 = Math.max(drag.origStart + SNAP, Math.min(HOUR_END * 60, ne2));
@@ -1446,30 +1973,56 @@
 
 	function onBlockPointerUp(e) {
 		if (!drag || drag.kind) return;
-		var block = document.querySelector('.vtc-tppl-block[data-slot-id="' + drag.id + '"]');
-		if (block) {
-			block.classList.remove('is-dragging');
+		if (drag.type === 'move' && e.pointerId !== drag.pointerId) {
+			return;
+		}
+		var capBlock = drag.type === 'move' && drag.blockEl
+			? drag.blockEl
+			: document.querySelector('.vtc-tppl-block[data-slot-id="' + (drag.type === 'moveGroup' ? drag.primaryId : drag.id) + '"]');
+		if (drag.type === 'move') {
+			document.removeEventListener('pointermove', onBlockPointerMove, true);
+			document.removeEventListener('pointerup', onBlockPointerUp, true);
+			document.removeEventListener('pointercancel', onBlockPointerUp, true);
+		}
+		if (drag.type === 'moveGroup') {
+			document.querySelectorAll('.vtc-tppl-block.is-dragging').forEach(function (b) {
+				b.classList.remove('is-dragging');
+			});
+		} else if (capBlock) {
+			capBlock.classList.remove('is-dragging');
+		}
+		if (capBlock && drag.type !== 'move') {
 			try {
-				block.releasePointerCapture(e.pointerId);
+				capBlock.releasePointerCapture(e.pointerId);
 			} catch (err) { /* ignore */ }
-			block.removeEventListener('pointermove', onBlockPointerMove);
-			block.removeEventListener('pointerup', onBlockPointerUp);
-			block.removeEventListener('pointercancel', onBlockPointerUp);
+			capBlock.removeEventListener('pointermove', onBlockPointerMove);
+			capBlock.removeEventListener('pointerup', onBlockPointerUp);
+			capBlock.removeEventListener('pointercancel', onBlockPointerUp);
 		}
 		document.querySelectorAll('.vtc-tppl-lane-body').forEach(function (b) {
 			b.classList.remove('is-drop-target');
 		});
-		var patch = {};
 		var slot = drag.slot;
+		if (drag.type === 'moveGroup') {
+			drag.items.forEach(function (it) {
+				recordSlotChange(it.id, { start_time: it.slot.start_time, end_time: it.slot.end_time });
+			});
+			drag = null;
+			render();
+			return;
+		}
+		var patch = {};
 		if (drag.type === 'move') {
 			patch.start_time = slot.start_time;
 			patch.end_time = slot.end_time;
-			var under = document.elementFromPoint(e.clientX, e.clientY);
-			var newBody = under && under.closest ? under.closest('.vtc-tppl-lane-body') : null;
-			if (newBody && newBody !== drag.body) {
-				patch.venue_id = parseInt(newBody.getAttribute('data-venue-id'), 10);
-				patch.day_of_week = parseInt(newBody.getAttribute('data-dow'), 10);
+			var finalLane = capBlock && capBlock.closest ? capBlock.closest('.vtc-tppl-lane-body') : null;
+			if (finalLane && finalLane !== drag.body) {
+				patch.venue_id = parseInt(finalLane.getAttribute('data-venue-id'), 10);
+				patch.day_of_week = parseInt(finalLane.getAttribute('data-dow'), 10);
 			}
+		} else if (drag.type === 'resize' && drag.edge === 'left') {
+			patch.start_time = slot.start_time;
+			patch.end_time = slot.end_time;
 		} else {
 			patch.end_time = slot.end_time;
 		}
@@ -1481,33 +2034,21 @@
 
 	function onDropTeam(e) {
 		e.preventDefault();
-		if (isWeekScope() && !state.data.has_exception) return;
+		if (isWeekScope() && !state.data.has_exception && !state.data.uses_deviation_blueprint) return;
 		var body = e.currentTarget;
 		body.classList.remove('is-drop-target');
 		var teamId = parseInt(e.dataTransfer.getData('text/plain'), 10);
 		if (!teamId) return;
-		var venueId = parseInt(body.getAttribute('data-venue-id'), 10);
-		var dow = parseInt(body.getAttribute('data-dow'), 10);
-		var rect = body.getBoundingClientRect();
-		var x = e.clientX - rect.left;
-		var frac = Math.max(0, Math.min(1, x / rect.width));
-		var m = HOUR_START * 60 + frac * TOTAL_MIN;
-		m = Math.round(m / SNAP) * SNAP;
-		var start = minToTime(m);
-		var end = minToTime(m + DEFAULT_LEN);
-		if (timeToMin(end) > HOUR_END * 60) {
-			end = minToTime(HOUR_END * 60);
-			start = minToTime(timeToMin(end) - DEFAULT_LEN);
-		}
+		var place = computePlacementFromPoint(body, e.clientX);
 		var tid = allocSlotTempId();
 		var team = findTeam(teamId);
 		var slot = {
 			id: tid,
 			team_id: teamId,
-			venue_id: venueId,
-			day_of_week: dow,
-			start_time: start,
-			end_time: end,
+			venue_id: place.venue_id,
+			day_of_week: place.day_of_week,
+			start_time: place.start_time,
+			end_time: place.end_time,
 			team_name: team ? team.display_name : ''
 		};
 		mergeSlot(slot);
@@ -1515,29 +2056,37 @@
 		render();
 	}
 
-	function deleteSlot(id) {
-		if (isWeekScope() && !state.data.has_exception) return;
+	function deleteSlot(id, opts) {
+		opts = opts || {};
+		if (isWeekScope() && !state.data.has_exception && !state.data.uses_deviation_blueprint) return;
+		state.selectedSlotIds.delete(id);
+		if (state.selectedSlotIds.size === 0) {
+			state.selectedId = null;
+		} else if (state.selectedId === id) {
+			state.selectedId = state.selectedSlotIds.values().next().value;
+		}
 		if (id < 0) {
 			removeSlot(id);
-			if (state.selectedId === id) state.selectedId = null;
 			markDirty();
-			render();
+			if (!opts.skipRender) render();
 			return;
 		}
 		pending.slotDeletes.add(id);
 		delete pending.slotPatches[id];
 		removeSlot(id);
-		if (state.selectedId === id) state.selectedId = null;
 		markDirty();
-		render();
+		if (!opts.skipRender) render();
 	}
 
 	function onPublish() {
-		if (isWeekScope()) return;
+		if (isWeekScope() && !(state.data && state.data.uses_deviation_blueprint && !state.data.has_exception)) return;
 		var msg = state.localDirty ? __('publishSaveFirst') : __('publishConfirm');
 		if (!window.confirm(msg)) return;
 		var afterSave = function () {
-			return api('admin/publish', { method: 'POST' })
+			return api('admin/publish' + bpQuery(), {
+				method: 'POST',
+				body: JSON.stringify(withBlueprintBody({}))
+			})
 				.then(function () {
 					showToast(__('published'), true);
 					return loadPlanner({ force: true });
@@ -1559,5 +2108,23 @@
 		}
 	}
 
-	loadPlanner({ initial: true });
+	function bootstrapPlanner() {
+		api('admin/blueprints')
+			.then(function (r) {
+				state.blueprintsList = r.blueprints || [];
+				if (r.base_blueprint_id && !state.blueprintId) {
+					state.blueprintId = r.base_blueprint_id;
+				}
+				loadPlanner({ initial: true });
+			})
+			.catch(function () {
+				state.blueprintsList = [];
+				if (!state.blueprintId && cfg.baseBlueprintId) {
+					state.blueprintId = parseInt(cfg.baseBlueprintId, 10);
+				}
+				loadPlanner({ initial: true });
+			});
+	}
+
+	bootstrapPlanner();
 })();

@@ -62,6 +62,19 @@
 	border-top: 1px solid var(--vtc-tppl-border);
 }
 
+.vtc-tppl-blueprint-bar,
+.vtc-tppl-version-bar {
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--vtc-tppl-border);
+}
+
+.vtc-tppl-blueprint-field select,
+.vtc-tppl-version-field select {
+	min-width: 12rem;
+	max-width: 100%;
+}
+
 .vtc-tppl-schedule-view {
 	display: inline-flex;
 	flex-wrap: wrap;
@@ -162,6 +175,98 @@
 	border-radius: 6px;
 	font-size: 12px;
 	color: #1d2327;
+}
+
+/* Klein venster: team kiezen na klik op lege baan (fixed i.v.m. scroll) */
+.vtc-tppl-team-picker {
+	position: fixed;
+	z-index: 100050;
+	min-width: 200px;
+	max-width: min(280px, calc(100vw - 16px));
+	padding: 6px 0 4px;
+	background: #fff;
+	border: 1px solid var(--vtc-tppl-border);
+	border-radius: 8px;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+	font-size: 13px;
+	color: #1d2327;
+}
+
+.vtc-tppl-team-picker-list {
+	list-style: none;
+	margin: 0;
+	padding: 0 4px;
+	max-height: 220px;
+	overflow-y: auto;
+}
+
+.vtc-tppl-team-picker-item {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	text-align: left;
+	padding: 8px 10px;
+	margin: 0;
+	border: none;
+	border-radius: 6px;
+	background: transparent;
+	cursor: pointer;
+	font: inherit;
+	color: #1d2327;
+}
+
+.vtc-tppl-team-picker-item:hover {
+	background: #f0f0f1;
+}
+
+.vtc-tppl-team-picker-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.vtc-tppl-team-picker-name {
+	flex: 1;
+	min-width: 0;
+	font-weight: 500;
+}
+
+.vtc-tppl-team-picker-empty {
+	padding: 10px 12px;
+	margin: 0;
+	color: #646970;
+	font-style: italic;
+	list-style: none;
+}
+
+.vtc-tppl-team-picker-divider {
+	border: none;
+	border-top: 1px solid var(--vtc-tppl-border);
+	margin: 4px 0 6px;
+}
+
+.vtc-tppl-team-picker-footer {
+	padding: 2px 10px 6px;
+}
+
+.vtc-tppl-team-picker-all {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: #50575e;
+	cursor: pointer;
+	font-weight: 500;
+}
+
+.vtc-tppl-sidebar-hint--overview {
+	font-size: 11px;
+	margin: 0 0 10px;
+	line-height: 1.35;
+	color: #50575e;
 }
 
 .vtc-tppl-toast {
@@ -406,6 +511,7 @@
 
 /* Niet-beschikbaar / inhuur-blokken (op de baan; tijd = horizontaal) */
 .vtc-tppl-unavail {
+	box-sizing: border-box;
 	position: absolute;
 	top: 4px;
 	bottom: 4px;
@@ -439,6 +545,11 @@
 	opacity: 0.92;
 	cursor: grabbing;
 	z-index: 12;
+}
+
+/* Teamrooster: geen × — label hoeft geen ruimte voor sluitknop */
+.vtc-tppl-unavail--readonly .vtc-tppl-unavail-label {
+	padding-right: 4px;
 }
 
 .vtc-tppl-unavail-label {
@@ -496,6 +607,7 @@
 }
 
 .vtc-tppl-unavail-preview {
+	box-sizing: border-box;
 	position: absolute;
 	top: 4px;
 	bottom: 4px;
@@ -517,12 +629,13 @@
 }
 
 .vtc-tppl-block {
+	box-sizing: border-box;
 	position: absolute;
 	top: 4px;
 	bottom: 4px;
 	border-radius: 4px;
 	z-index: 3;
-	padding: 3px 5px;
+	padding: 3px 10px 3px 11px;
 	font-size: 10px;
 	font-weight: 600;
 	color: #fff;
@@ -546,6 +659,12 @@
 .vtc-tppl--week-scope .vtc-tppl-unavail {
 	pointer-events: none;
 	opacity: 0.88;
+}
+
+/* Teamrooster: inhuur-blokken tonen maar niet interactief */
+.vtc-tppl:not(.vtc-tppl--inhuur):not(.vtc-tppl--week-scope) .vtc-tppl-unavail {
+	pointer-events: none;
+	cursor: default;
 }
 
 .vtc-tppl-block:hover {
@@ -605,11 +724,19 @@
 .vtc-tppl-block-resize {
 	position: absolute;
 	top: 0;
-	right: 0;
 	bottom: 0;
 	width: 8px;
 	cursor: ew-resize;
 	background: transparent;
+	z-index: 2;
+}
+
+.vtc-tppl-block-resize--left {
+	left: 0;
+}
+
+.vtc-tppl-block-resize--right {
+	right: 0;
 }
 
 .vtc-tppl-block-resize:hover {

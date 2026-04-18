@@ -60,10 +60,11 @@ class VTC_TP_Admin {
 				'vtc-tp-planner-admin',
 				'vtcTpPlanner',
 				array(
-					'rest'   => esc_url_raw( rest_url( 'vtc-tp/v1/' ) ),
-					'nonce'  => wp_create_nonce( 'wp_rest' ),
-					'stam'   => esc_url( admin_url( 'admin.php?page=vtc-training-stamdata' ) ),
-					'currentIsoWeek' => VTC_TP_Schedule::current_iso_week(),
+					'rest'             => esc_url_raw( rest_url( trailingslashit( 'vtc-tp/v1' ) ) ),
+					'nonce'            => wp_create_nonce( 'wp_rest' ),
+					'stam'             => esc_url( admin_url( 'admin.php?page=vtc-training-stamdata' ) ),
+					'baseBlueprintId'  => (int) $this->db->get_base_blueprint_id(),
+					'currentIsoWeek'   => VTC_TP_Schedule::current_iso_week(),
 					'i18n'   => array(
 						'loadErr'    => __( 'Laden mislukt.', 'vtc-training-planner' ),
 						'loadErrHint' => __( 'Wissel hierboven tussen blauwdruk en week, of klik op Herladen. Controleer of de REST API bereikbaar is en of er een blauwdruk bestaat.', 'vtc-training-planner' ),
@@ -83,7 +84,7 @@ class VTC_TP_Admin {
 						'publishConfirm' => __( 'Gepubliceerd rooster vervangen door dit concept?', 'vtc-training-planner' ),
 						'publishSaveFirst' => __( 'Niet-opgeslagen wijzigingen worden eerst opgeslagen. Daarna het live rooster vervangen door dit concept?', 'vtc-training-planner' ),
 						'reload'     => __( 'Herladen', 'vtc-training-planner' ),
-						'helpDrag'   => __( 'Sleep een team naar een baan (veld) op de tijdas om een training te plannen. Sleep blokken horizontaal om te verplaatsen; sleep de rechterrand om de duur te wijzigen. Dubbelklik of × om te verwijderen. Wijzigingen blijven lokaal tot je op “Concept opslaan” drukt.', 'vtc-training-planner' ),
+						'helpDrag'   => __( 'Sleep een team naar een baan (veld) op de tijdas om een training te plannen. Sleep blokken horizontaal om te verplaatsen; sleep de linkerrand om te beginnen, de rechterrand om de duur te wijzigen. Met Ctrl (⌘ op Mac) klik je meerdere blokken aan en verschuif je ze samen in de tijd. Inhuurblokken bewerk je in modus “Zaal/veld (inhuur)”. Dubbelklik of × om te verwijderen. Wijzigingen blijven lokaal tot je op “Concept opslaan” drukt.', 'vtc-training-planner' ),
 						'saved'      => __( 'Opgeslagen.', 'vtc-training-planner' ),
 						'added'      => __( 'Training toegevoegd.', 'vtc-training-planner' ),
 						'modeTeams'  => __( 'Teamrooster', 'vtc-training-planner' ),
@@ -110,6 +111,21 @@ class VTC_TP_Admin {
 						'weekNavNext' => __( 'Volgende week', 'vtc-training-planner' ),
 						'existingExceptions' => __( 'Afwijkende weken', 'vtc-training-planner' ),
 						'badWeek' => __( 'Ongeldige ISO-week.', 'vtc-training-planner' ),
+						'blueprintLabel' => __( 'Blauwdruk', 'vtc-training-planner' ),
+						'deviationActiveWeek' => __( 'Deze week: afwijkende blauwdruk (zonder aparte uitzonderingsweek). Wijzigingen gaan naar het weekpatroon van die blauwdruk.', 'vtc-training-planner' ),
+						'versionLabel' => __( 'Versie (bewerken)', 'vtc-training-planner' ),
+						'versionLive' => __( '(live)', 'vtc-training-planner' ),
+						'newConceptVersion' => __( 'Nieuw concept van live', 'vtc-training-planner' ),
+						'newConceptVersionPrompt' => __( 'Label voor de nieuwe conceptversie (optioneel):', 'vtc-training-planner' ),
+						'versionSwitchErr' => __( 'Versie wisselen mislukt.', 'vtc-training-planner' ),
+						'versionCreated' => __( 'Conceptversie aangemaakt.', 'vtc-training-planner' ),
+						'teamOverviewTitle' => __( 'Team kiezen', 'vtc-training-planner' ),
+						'teamOverviewHint' => __( 'Gebaseerd op “trainings per week” uit stamdata en het aantal geplande trainingen in dit overzicht.', 'vtc-training-planner' ),
+						'teamOverviewShowAll' => __( 'Toon alle teams', 'vtc-training-planner' ),
+						'teamOverviewEmpty' => __( 'Alle teams hebben hun aantal trainingen gepland (of geen verplicht aantal).', 'vtc-training-planner' ),
+						'teamOverviewClose' => __( 'Sluiten', 'vtc-training-planner' ),
+						'teamOverviewChipTitle' => __( 'Gepland / nodig', 'vtc-training-planner' ),
+						'teamOverviewLaneHelp' => __( 'Klik op een lege baan: kies een team; de training komt op die tijd en plek. Of sleep een team vanuit de zijbalk.', 'vtc-training-planner' ),
 					),
 				)
 			);
@@ -128,6 +144,7 @@ class VTC_TP_Admin {
 			58
 		);
 		add_submenu_page( 'vtc-training-planner', __( 'Instellingen', 'vtc-training-planner' ), __( 'Instellingen', 'vtc-training-planner' ), $cap, 'vtc-training-planner', array( $this, 'render_settings' ) );
+		add_submenu_page( 'vtc-training-planner', __( 'Blauwdrukken', 'vtc-training-planner' ), __( 'Blauwdrukken', 'vtc-training-planner' ), $cap, 'vtc-training-blueprints', array( $this, 'render_blueprints' ) );
 		add_submenu_page( 'vtc-training-planner', __( 'Stamdata', 'vtc-training-planner' ), __( 'Stamdata', 'vtc-training-planner' ), $cap, 'vtc-training-stamdata', array( $this, 'render_stamdata' ) );
 		add_submenu_page( 'vtc-training-planner', __( 'Rooster (visueel)', 'vtc-training-planner' ), __( 'Rooster (visueel)', 'vtc-training-planner' ), $cap, 'vtc-training-planner-visual', array( $this, 'render_planner_visual' ) );
 		add_submenu_page( 'vtc-training-planner', __( 'Rooster (lijst)', 'vtc-training-planner' ), __( 'Rooster (lijst)', 'vtc-training-planner' ), $cap, 'vtc-training-rooster', array( $this, 'render_rooster' ) );
@@ -136,7 +153,13 @@ class VTC_TP_Admin {
 	}
 
 	private function bp() {
-		return $this->db->get_default_blueprint_id();
+		if ( isset( $_REQUEST['blueprint_id'] ) ) {
+			$bid = absint( $_REQUEST['blueprint_id'] );
+			if ( $bid > 0 && $this->db->get_blueprint( $bid ) ) {
+				return $bid;
+			}
+		}
+		return $this->db->get_base_blueprint_id();
 	}
 
 	/**
@@ -501,6 +524,34 @@ class VTC_TP_Admin {
 			case 'delete_exception_slot':
 				$wpdb->delete( "{$p}vtc_tp_exception_slot", array( 'id' => absint( $_POST['slot_id'] ?? 0 ) ), array( '%d' ) );
 				break;
+
+			case 'add_deviation_blueprint':
+				$n = sanitize_text_field( wp_unslash( $_POST['deviation_name'] ?? '' ) );
+				if ( $n ) {
+					$this->db->insert_deviation_blueprint( $n, $this->db->get_base_blueprint_id() );
+					add_settings_error( 'vtc_tp', 'dev_bp', __( 'Afwijkende blauwdruk toegevoegd. Vul stamdata en rooster per blauwdruk in.', 'vtc-training-planner' ), 'success' );
+				}
+				break;
+
+			case 'add_deviation_week_admin':
+				$dw_bp = absint( $_POST['deviation_blueprint_id'] ?? 0 );
+				$iw    = VTC_TP_Schedule::normalize_iso_week( wp_unslash( $_POST['iso_week'] ?? '' ) );
+				if ( $iw ) {
+					$r = $this->db->insert_deviation_week( $dw_bp, $iw );
+					if ( null === $r ) {
+						add_settings_error( 'vtc_tp', 'dw_bad', __( 'Ongeldige afwijkende blauwdruk of week.', 'vtc-training-planner' ), 'error' );
+					} elseif ( 0 === $r ) {
+						add_settings_error( 'vtc_tp', 'dw_dup', __( 'Deze week is al toegewezen aan een andere afwijkende blauwdruk.', 'vtc-training-planner' ), 'error' );
+					} else {
+						add_settings_error( 'vtc_tp', 'dw_ok', __( 'Week toegevoegd.', 'vtc-training-planner' ), 'success' );
+					}
+				}
+				break;
+
+			case 'delete_deviation_week_admin':
+				$this->db->delete_deviation_week( absint( $_POST['deviation_week_id'] ?? 0 ) );
+				add_settings_error( 'vtc_tp', 'dw_del', __( 'Toewijzing verwijderd.', 'vtc-training-planner' ), 'success' );
+				break;
 		}
 	}
 
@@ -512,6 +563,85 @@ class VTC_TP_Admin {
 		echo '<p class="description">' . esc_html__( 'Zelfde lay-out als de Team-app: dagen onder elkaar, per dag velden als rijen en tijd horizontaal (08:00–22:00). Wijzigingen gaan naar het conceptrooster; publiceer om live te zetten.', 'vtc-training-planner' );
 		echo ' <a href="' . esc_url( admin_url( 'admin.php?page=vtc-training-rooster' ) ) . '">' . esc_html__( 'Lijstweergave', 'vtc-training-planner' ) . '</a></p>';
 		echo '<div id="vtc-tp-planner-root" class="vtc-tp-planner-root" aria-live="polite"></div></div>';
+	}
+
+	public function render_blueprints() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		settings_errors( 'vtc_tp' );
+		$bps   = $this->db->list_blueprints();
+		$dweek = $this->db->list_all_deviation_weeks();
+		$base  = $this->db->get_base_blueprint_id();
+		?>
+		<div class="wrap vtc-tp-wrap">
+			<h1><?php esc_html_e( 'Blauwdrukken', 'vtc-training-planner' ); ?></h1>
+			<p class="description"><?php esc_html_e( 'Er is één basis-blauwdruk (kind “basis”). Afwijkende blauwdrukken hebben eigen stamdata en rooster; per gepubliceerde versie één live patroon. Wijs ISO-weken toe — die overrulen de basis in het weekoverzicht.', 'vtc-training-planner' ); ?></p>
+
+			<h2><?php esc_html_e( 'Blauwdrukken', 'vtc-training-planner' ); ?></h2>
+			<table class="widefat striped"><thead><tr><th><?php esc_html_e( 'Naam', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Type', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Stamdata / rooster', 'vtc-training-planner' ); ?></th></tr></thead><tbody>
+			<?php foreach ( $bps as $b ) : ?>
+				<tr>
+					<td><?php echo esc_html( $b->name ); ?></td>
+					<td><?php echo (int) $b->kind === VTC_TP_DB::KIND_DEVIATION ? esc_html__( 'Afwijkend', 'vtc-training-planner' ) : esc_html__( 'Basis', 'vtc-training-planner' ); ?></td>
+					<td><a href="<?php echo esc_url( admin_url( 'admin.php?page=vtc-training-stamdata&blueprint_id=' . (int) $b->id ) ); ?>"><?php esc_html_e( 'Stamdata', 'vtc-training-planner' ); ?></a>
+						· <a href="<?php echo esc_url( admin_url( 'admin.php?page=vtc-training-planner-visual' ) ); ?>#bp=<?php echo (int) $b->id; ?>"><?php esc_html_e( 'Rooster (visueel)', 'vtc-training-planner' ); ?></a></td>
+				</tr>
+			<?php endforeach; ?>
+			</tbody></table>
+
+			<h2><?php esc_html_e( 'Afwijkende blauwdruk toevoegen', 'vtc-training-planner' ); ?></h2>
+			<form method="post" class="vtc-tp-inline-form">
+				<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
+				<input type="hidden" name="vtc_tp_action" value="add_deviation_blueprint" />
+				<input name="deviation_name" placeholder="<?php esc_attr_e( 'Naam (bijv. Eindexamen / andere zalen)', 'vtc-training-planner' ); ?>" class="regular-text" required />
+				<?php submit_button( __( 'Toevoegen', 'vtc-training-planner' ), 'secondary', '', false ); ?>
+			</form>
+
+			<?php
+			$dev_bps = array_filter(
+				$bps,
+				function ( $b ) {
+					return (int) $b->kind === VTC_TP_DB::KIND_DEVIATION;
+				}
+			);
+			?>
+			<?php if ( count( $dev_bps ) > 0 ) : ?>
+			<h2><?php esc_html_e( 'Week toewijzen aan afwijkende blauwdruk', 'vtc-training-planner' ); ?></h2>
+			<p class="description"><?php esc_html_e( 'Elke ISO-week kan maar bij één afwijkende blauwdruk horen.', 'vtc-training-planner' ); ?></p>
+			<form method="post" class="vtc-tp-inline-form">
+				<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
+				<input type="hidden" name="vtc_tp_action" value="add_deviation_week_admin" />
+				<select name="deviation_blueprint_id" required>
+					<?php foreach ( $dev_bps as $b ) : ?>
+						<option value="<?php echo (int) $b->id; ?>"><?php echo esc_html( $b->name ); ?></option>
+					<?php endforeach; ?>
+				</select>
+				<input name="iso_week" placeholder="2026-W20" required pattern="[0-9]{4}-[Ww][0-9]{1,2}" />
+				<?php submit_button( __( 'Week toewijzen', 'vtc-training-planner' ), 'primary', '', false ); ?>
+			</form>
+			<?php endif; ?>
+
+			<h2><?php esc_html_e( 'Toegewezen afwijkingsweken', 'vtc-training-planner' ); ?></h2>
+			<table class="widefat striped"><thead><tr><th><?php esc_html_e( 'Week', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Blauwdruk', 'vtc-training-planner' ); ?></th><th></th></tr></thead><tbody>
+			<?php foreach ( $dweek as $w ) : ?>
+				<tr>
+					<td><?php echo esc_html( $w->iso_week ); ?></td>
+					<td><?php echo esc_html( $w->blueprint_name ); ?></td>
+					<td>
+						<form method="post" style="display:inline" onsubmit="return confirm('<?php echo esc_js( __( 'Toewijzing verwijderen?', 'vtc-training-planner' ) ); ?>');">
+							<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
+							<input type="hidden" name="vtc_tp_action" value="delete_deviation_week_admin" />
+							<input type="hidden" name="deviation_week_id" value="<?php echo (int) $w->id; ?>" />
+							<button class="button-link-delete"><?php esc_html_e( 'Verwijderen', 'vtc-training-planner' ); ?></button>
+						</form>
+					</td>
+				</tr>
+			<?php endforeach; ?>
+			</tbody></table>
+			<p class="description"><?php esc_html_e( 'Basis-blauwdruk-id voor koppelingen:', 'vtc-training-planner' ); ?> <code><?php echo (int) $base; ?></code></p>
+		</div>
+		<?php
 	}
 
 	public function render_settings() {
@@ -571,9 +701,25 @@ class VTC_TP_Admin {
 		$club  = $this->db->get_club();
 		$teams = $this->db->get_teams( $bp );
 		$locs  = $this->db->get_locations( $bp );
+		$bp_row = $this->db->get_blueprint( $bp );
+		$all_bp = $this->db->list_blueprints();
 		?>
 		<div class="wrap vtc-tp-wrap">
-			<h1><?php esc_html_e( 'Stamdata', 'vtc-training-planner' ); ?></h1>
+			<h1><?php esc_html_e( 'Stamdata', 'vtc-training-planner' ); ?><?php echo $bp_row ? ' — ' . esc_html( $bp_row->name ) : ''; ?></h1>
+			<p class="vtc-tp-bp-switch">
+				<?php esc_html_e( 'Blauwdruk:', 'vtc-training-planner' ); ?>
+				<?php foreach ( $all_bp as $bx ) : ?>
+					<?php
+					$url = admin_url( 'admin.php?page=vtc-training-stamdata&blueprint_id=' . (int) $bx->id );
+					if ( (int) $bx->id === (int) $bp ) {
+						echo ' <strong>' . esc_html( $bx->name ) . '</strong>';
+					} else {
+						echo ' <a href="' . esc_url( $url ) . '">' . esc_html( $bx->name ) . '</a>';
+					}
+					?>
+				<?php endforeach; ?>
+				| <a href="<?php echo esc_url( admin_url( 'admin.php?page=vtc-training-blueprints' ) ); ?>"><?php esc_html_e( 'Blauwdrukken beheren', 'vtc-training-planner' ); ?></a>
+			</p>
 			<p class="description"><?php esc_html_e( 'Zelfde structuur als de Team-app: vereniging (clubs), teams met Nevobo-type/nummer, locaties met optionele Nevobo-zaalnaam, velden met type zaal/buiten en optionele veld-slug.', 'vtc-training-planner' ); ?></p>
 
 			<h2><?php esc_html_e( 'Vereniging', 'vtc-training-planner' ); ?></h2>
@@ -756,9 +902,22 @@ class VTC_TP_Admin {
 		$teams  = $this->db->get_teams( $bp );
 		$venues = $this->db->get_venues_for_blueprint( $bp );
 		$diff   = $this->db->draft_differs_from_published( $bp );
+		$all_bp = $this->db->list_blueprints();
 		?>
 		<div class="wrap vtc-tp-wrap">
 			<h1><?php esc_html_e( 'Rooster (lijst)', 'vtc-training-planner' ); ?></h1>
+			<p class="vtc-tp-bp-switch"><?php esc_html_e( 'Blauwdruk:', 'vtc-training-planner' ); ?>
+				<?php foreach ( $all_bp as $bx ) : ?>
+					<?php
+					$url = admin_url( 'admin.php?page=vtc-training-rooster&blueprint_id=' . (int) $bx->id );
+					if ( (int) $bx->id === (int) $bp ) {
+						echo ' <strong>' . esc_html( $bx->name ) . '</strong>';
+					} else {
+						echo ' <a href="' . esc_url( $url ) . '">' . esc_html( $bx->name ) . '</a>';
+					}
+					?>
+				<?php endforeach; ?>
+			</p>
 			<p class="description">
 				<?php
 				echo esc_html__( 'Voor slepen en tijdlijn: gebruik', 'vtc-training-planner' );
@@ -771,6 +930,7 @@ class VTC_TP_Admin {
 			<form method="post" style="margin-bottom:1rem">
 				<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
 				<input type="hidden" name="vtc_tp_action" value="publish_slots" />
+				<input type="hidden" name="blueprint_id" value="<?php echo (int) $bp; ?>" />
 				<?php submit_button( __( 'Publiceren (live)', 'vtc-training-planner' ), 'primary', '', false, array( 'onclick' => "return confirm('" . esc_js( __( 'Gepubliceerd rooster vervangen door concept?', 'vtc-training-planner' ) ) . "');" ) ); ?>
 			</form>
 			<table class="widefat striped"><thead><tr><th><?php esc_html_e( 'Team', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Veld', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Dag', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Tijd', 'vtc-training-planner' ); ?></th><th></th></tr></thead><tbody>
