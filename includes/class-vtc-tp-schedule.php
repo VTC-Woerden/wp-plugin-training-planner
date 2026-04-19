@@ -47,6 +47,28 @@ class VTC_TP_Schedule {
 	}
 
 	/**
+	 * Verschuif ISO-week met een aantal weken (negatief = terug).
+	 *
+	 * @param string $iso_week Genormaliseerde week (YYYY-Www).
+	 * @param int    $delta    Aantal weken (+/-).
+	 * @return string|null
+	 */
+	public static function shift_iso_week( $iso_week, $delta ) {
+		$norm = self::normalize_iso_week( (string) $iso_week );
+		if ( ! $norm || ! preg_match( '/^(\d{4})-W(\d{2})$/', $norm, $m ) ) {
+			return null;
+		}
+		$tz = wp_timezone();
+		try {
+			$d = ( new DateTimeImmutable( 'now', $tz ) )->setISODate( (int) $m[1], (int) $m[2], 1 )->setTime( 0, 0, 0 );
+			$d = $d->modify( ( (int) $delta >= 0 ? '+' : '' ) . (int) $delta . ' weeks' );
+			return $d->format( 'o' ) . '-W' . $d->format( 'W' );
+		} catch ( Exception $e ) {
+			return null;
+		}
+	}
+
+	/**
 	 * Dagnamen zoals Team-app / training.js (0 = maandag … 6 = zondag).
 	 *
 	 * @return array<int, string>
@@ -182,7 +204,8 @@ class VTC_TP_Schedule {
 				'venue_id'       => $vid,
 				'location_label' => $loc_label,
 				'field_label'    => $venue ? $venue->name : '',
-				'hall_key'       => $loc_label ? strtolower( $loc_label ) : 'v:' . $vid,
+				// Per baan (venue_id), niet alleen locatienaam — anders vallen alle velden in dezelfde zaal onder één sleutel en krijg je valse conflicten.
+				'hall_key'       => 'v:' . $vid,
 			);
 		}
 
@@ -255,7 +278,7 @@ class VTC_TP_Schedule {
 	}
 
 	/**
-	 * Merge training + match events and flag simple time overlaps per venue_id (trainings only) or location string.
+	 * Merge training + match events en markeer tijd-overlap per hall_key (training: venue_id; wedstrijd: zaalnaam uit RSS).
 	 *
 	 * @return array<int, array<string, mixed>>
 	 */

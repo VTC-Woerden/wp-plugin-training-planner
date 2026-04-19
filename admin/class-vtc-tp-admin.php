@@ -1218,6 +1218,7 @@ class VTC_TP_Admin {
 	}
 
 	public function render_week_preview() {
+		wp_enqueue_style( 'vtc-tp-public' );
 		$w    = isset( $_GET['week'] ) ? sanitize_text_field( wp_unslash( $_GET['week'] ) ) : VTC_TP_Schedule::current_iso_week();
 		$norm = VTC_TP_Schedule::normalize_iso_week( $w ) ?: VTC_TP_Schedule::current_iso_week();
 		$data = $this->schedule->get_merged_week( $norm, $this->nevobo );

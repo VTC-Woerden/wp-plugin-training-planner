@@ -1,64 +1,314 @@
+/**
+ * Weekrooster frontend — visueel gelijkend op Rooster (visueel): dagen, banen, tijdas.
+ */
+
+.vtc-tp-week-block-wrap {
+	margin: 0;
+	max-width: 100%;
+	overflow-x: hidden;
+}
+
+.vtc-tp-week-shell {
+	max-width: 100%;
+	overflow-x: hidden;
+}
+
 .vtc-tp-week {
-	margin: 1rem 0;
+	--vtc-tp-border: #c3c4c7;
+	--vtc-tp-bg: #f0f0f1;
+	--vtc-tp-card: #fff;
+	--vtc-tp-accent: #2271b1;
+	--vtc-tp-text: #1d2327;
+	--vtc-tp-muted: #646970;
+	margin: 1.25rem 0;
+	color: var(--vtc-tp-text);
+	font-size: 14px;
+	line-height: 1.45;
+}
+
+.vtc-tp-week--visual {
+	max-width: 100%;
+	overflow-x: hidden;
+}
+
+.vtc-tp-week-header {
+	margin-bottom: 1rem;
+}
+
+.vtc-tp-week-header-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	margin-bottom: 0.35rem;
+}
+
+.vtc-tp-week-title-wrap {
+	flex: 1 1 auto;
+	min-width: 0;
+	text-align: center;
+}
+
+.vtc-tp-week-title-wrap .vtc-tp-week-title {
+	margin: 0;
+}
+
+.vtc-tp-week-nav-btn {
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+	border-radius: 8px;
+	border: 1px solid var(--vtc-tp-border);
+	background: #fff;
+	color: var(--vtc-tp-accent);
+	text-decoration: none;
+	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+	transition: background 0.12s, box-shadow 0.12s;
+}
+
+.vtc-tp-week-nav-btn:hover {
+	background: #f0f6fc;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.vtc-tp-week-nav-icon {
+	font-size: 1.25rem;
+	line-height: 1;
+	font-weight: 700;
 }
 
 .vtc-tp-week-title {
-	margin: 0 0 0.75rem;
-	font-size: 1.25rem;
+	margin: 0 0 0.35rem;
+	font-size: 1.35rem;
+	font-weight: 700;
+	letter-spacing: 0.01em;
 }
 
 .vtc-tp-week-note {
 	font-size: 0.9rem;
-	color: #646970;
-	margin: 0 0 1rem;
+	color: var(--vtc-tp-muted);
+	margin: 0.35rem 0 0;
 }
 
-.vtc-tp-events {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-}
-
-.vtc-tp-ev {
-	padding: 0.65rem 0.75rem;
-	margin: 0 0 0.5rem;
-	border: 1px solid #dcdcde;
-	border-radius: 4px;
-	background: #fff;
-}
-
-.vtc-tp-ev--match {
-	border-left: 4px solid #2271b1;
-}
-
-.vtc-tp-ev--training {
-	border-left: 4px solid #00a32a;
-}
-
-.vtc-tp-ev--conflict {
-	border-color: #d63638;
-	background: #fcf0f1;
-}
-
-.vtc-tp-ev-time {
-	font-weight: 600;
-	margin-right: 0.35rem;
-}
-
-.vtc-tp-ev-badge {
-	font-size: 0.75rem;
-	text-transform: uppercase;
-	color: #646970;
-	margin-left: 0.25rem;
-}
-
-.vtc-tp-ev-where {
-	font-size: 0.9rem;
+.vtc-tp-week-empty,
+.vtc-tp-day-empty {
+	margin: 0.75rem 0;
+	padding: 12px 14px;
+	background: #f6f7f7;
+	border: 1px solid var(--vtc-tp-border);
+	border-radius: 8px;
 	color: #50575e;
 }
 
+.vtc-tp-days {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	width: 100%;
+	min-width: 0;
+}
+
+.vtc-tp-day {
+	width: 100%;
+	border: 1px solid var(--vtc-tp-border);
+	border-radius: 10px;
+	background: var(--vtc-tp-card);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+.vtc-tp-day-head {
+	padding: 12px 16px;
+	font-weight: 700;
+	background: linear-gradient(180deg, #e8eef5 0%, #f6f8fb 100%);
+	border-bottom: 1px solid var(--vtc-tp-border);
+}
+
+.vtc-tp-day-head-main {
+	font-size: 15px;
+}
+
+.vtc-tp-day-name {
+	font-weight: 700;
+	color: var(--vtc-tp-text);
+}
+
+.vtc-tp-day-date {
+	font-weight: 600;
+	color: #2c3338;
+}
+
+.vtc-tp-day-empty {
+	margin: 0;
+	border: none;
+	border-top: 1px solid var(--vtc-tp-border);
+	border-radius: 0;
+	background: #fafafa;
+}
+
+.vtc-tp-day-grid {
+	overflow-x: hidden;
+	overflow-y: visible;
+}
+
+.vtc-tp-day-grid-inner {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 2.6fr);
+	align-items: stretch;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	--vtc-tp-hours: 6;
+}
+
+.vtc-tp-corner {
+	grid-column: 1;
+	grid-row: 1;
+	border-right: 1px solid var(--vtc-tp-border);
+	border-bottom: 1px solid var(--vtc-tp-border);
+	background: #f6f7f7;
+	min-height: 32px;
+}
+
+.vtc-tp-time-ruler {
+	grid-column: 2;
+	grid-row: 1;
+	position: relative;
+	height: 32px;
+	border-bottom: 1px solid var(--vtc-tp-border);
+	background: #fff;
+}
+
+.vtc-tp-time-tick {
+	position: absolute;
+	top: 0;
+	left: 0;
+	height: 100%;
+	padding: 6px 0 0 4px;
+	pointer-events: none;
+	border-left: 1px solid #dcdcde;
+	box-sizing: border-box;
+}
+
+.vtc-tp-time-tick-label {
+	font-size: 10px;
+	font-weight: 700;
+	color: var(--vtc-tp-muted);
+	white-space: nowrap;
+}
+
+.vtc-tp-lane-label {
+	grid-column: 1;
+	font-size: 11px;
+	font-weight: 600;
+	padding: 10px 10px;
+	line-height: 1.35;
+	color: #3c434a;
+	border-right: 1px solid var(--vtc-tp-border);
+	border-bottom: 1px solid #e8e8e8;
+	background: #fafafa;
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	hyphens: auto;
+}
+
+.vtc-tp-lane-body {
+	grid-column: 2;
+	position: relative;
+	min-height: 48px;
+	min-width: 0;
+	margin: 0;
+	border-bottom: 1px solid #e8e8e8;
+	background-color: #fff;
+	--vtc-tph: calc(100% / var(--vtc-tp-hours));
+	background-image:
+		repeating-linear-gradient(
+			90deg,
+			transparent 0,
+			transparent calc(var(--vtc-tph) * 0.5 - 1px),
+			rgba(0, 0, 0, 0.035) calc(var(--vtc-tph) * 0.5 - 1px),
+			rgba(0, 0, 0, 0.035) calc(var(--vtc-tph) * 0.5)
+		),
+		repeating-linear-gradient(
+			90deg,
+			#fff 0,
+			#fff calc(var(--vtc-tph) - 1px),
+			#dde1e4 calc(var(--vtc-tph) - 1px),
+			#dde1e4 var(--vtc-tph)
+		);
+	background-clip: padding-box;
+}
+
+.vtc-tp-day-grid-inner > .vtc-tp-lane-body:last-child {
+	border-bottom: none;
+}
+
+.vtc-tp-block {
+	box-sizing: border-box;
+	position: absolute;
+	top: 5px;
+	bottom: 5px;
+	border-radius: 5px;
+	z-index: 2;
+	padding: 4px 8px 4px 9px;
+	font-size: 10px;
+	font-weight: 600;
+	color: #fff;
+	text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+	overflow: hidden;
+	border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.vtc-tp-block--match {
+	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), 0 1px 3px rgba(0, 0, 0, 0.22);
+}
+
+.vtc-tp-block--conflict {
+	outline: 2px solid #d63638;
+	outline-offset: 1px;
+	z-index: 4;
+}
+
+.vtc-tp-block-title {
+	display: block;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	line-height: 1.25;
+}
+
+.vtc-tp-block-time {
+	display: block;
+	font-size: 9px;
+	opacity: 0.95;
+	font-weight: 500;
+	margin-top: 2px;
+}
+
+.vtc-tp-block-sub {
+	display: block;
+	font-size: 8px;
+	opacity: 0.88;
+	font-weight: 500;
+	margin-top: 2px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* Blok-editor: korte placeholder als SSR nog laadt */
 .vtc-tp-block-editor-note {
 	padding: 1rem;
-	border: 1px dashed #c3c4c7;
-	background: #f6f7f7;
+	border: 1px dashed var(--vtc-tp-border);
+	background: var(--vtc-tp-bg);
+	font-size: 13px;
+	color: #50575e;
 }

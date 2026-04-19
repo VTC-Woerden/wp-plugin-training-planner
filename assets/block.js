@@ -1,21 +1,25 @@
-( function ( blocks, element, blockEditor, components ) {
+( function ( blocks, element, blockEditor, components, serverSideRender ) {
 	var el = element.createElement;
+	var Fragment = element.Fragment;
 	var InspectorControls = blockEditor.InspectorControls;
+	var useBlockProps = blockEditor.useBlockProps;
 	var PanelBody = components.PanelBody;
 	var TextControl = components.TextControl;
+	var ServerSideRender = serverSideRender;
 
 	blocks.registerBlockType( 'vtc-training-planner/week', {
 		apiVersion: 2,
 		title: 'Training week',
 		icon: 'calendar-alt',
 		category: 'widgets',
-		description: 'Weekoverzicht trainingen + Nevobo-wedstrijden',
+		description: 'Weekoverzicht trainingen + Nevobo-wedstrijden (visueel rooster)',
 		attributes: {
 			week: { type: 'string', default: '' },
 		},
 		edit: function ( props ) {
+			var blockProps = useBlockProps( { className: 'vtc-tp-week-block-wrap' } );
 			return el(
-				element.Fragment,
+				Fragment,
 				{},
 				el(
 					InspectorControls,
@@ -35,8 +39,11 @@
 				),
 				el(
 					'div',
-					{ className: 'vtc-tp-block-editor-note' },
-					'[Training week — frontend toont het rooster]'
+					blockProps,
+					el( ServerSideRender, {
+						block: 'vtc-training-planner/week',
+						attributes: { week: props.attributes.week || '' },
+					} )
 				)
 			);
 		},
@@ -44,4 +51,10 @@
 			return null;
 		},
 	} );
-} )( window.wp.blocks, window.wp.element, window.wp.blockEditor, window.wp.components );
+} )(
+	window.wp.blocks,
+	window.wp.element,
+	window.wp.blockEditor,
+	window.wp.components,
+	window.wp.serverSideRender
+);
