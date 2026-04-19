@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class VTC_TP_Activator {
 
-	const DB_VERSION = '3';
+	const DB_VERSION = '4';
 
 	/**
 	 * Run on plugin activation.
@@ -263,6 +263,10 @@ class VTC_TP_Activator {
 			self::migrate_schema_v3( $p, $charset_collate );
 		}
 
+		if ( version_compare( (string) $current, '4', '<' ) ) {
+			self::migrate_schema_v4( $p );
+		}
+
 		update_option( 'vtc_tp_db_version', self::DB_VERSION );
 	}
 
@@ -351,6 +355,26 @@ class VTC_TP_Activator {
 				);
 				$wpdb->update( $bp_table, array( 'editing_version_id' => $vid ), array( 'id' => $bid ), array( '%d' ), array( '%d' ) );
 			}
+		}
+	}
+
+	/**
+	 * Extra teams op hetzelfde slot (JSON-array van team-id's, exclusief team_id).
+	 *
+	 * @param string $p Table prefix with trailing underscore pattern e.g. wp_.
+	 */
+	private static function migrate_schema_v4( $p ) {
+		global $wpdb;
+		$tables = array(
+			"{$p}vtc_tp_slot_draft",
+			"{$p}vtc_tp_slot_published",
+			"{$p}vtc_tp_exception_slot",
+		);
+		foreach ( $tables as $tbl ) {
+			if ( self::column_exists( $tbl, 'co_team_ids' ) ) {
+				continue;
+			}
+			$wpdb->query( "ALTER TABLE {$tbl} ADD COLUMN co_team_ids text NULL" );
 		}
 	}
 

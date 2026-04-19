@@ -163,6 +163,12 @@
 
 	function applyLoadedPlannerData(data) {
 		if (!data.unavailability) data.unavailability = [];
+		(data.slots || []).forEach(function (s) {
+			if (!Array.isArray(s.co_team_ids)) s.co_team_ids = [];
+		});
+		(data.baseline_slots || []).forEach(function (s) {
+			if (!Array.isArray(s.co_team_ids)) s.co_team_ids = [];
+		});
 		state.data = data;
 		state.lastLoadError = null;
 		// Alleen in blauwdruk-modus server-blauwdruk overnemen; weekweergave toont effectieve BP en mag je keuze voor het blauwdruk-tabblad niet overschrijven.
@@ -203,6 +209,8 @@
 		state.tempUnavailId = -1;
 		state.teamPickerOpen = false;
 		state.teamPickerShowAll = false;
+		state.coTeamPickerOpen = false;
+		state.coTeamPickerSlotId = 0;
 	}
 
 	var state = {
@@ -231,7 +239,12 @@
 		teamPickerDow: 0,
 		teamPickerStart: '',
 		teamPickerEnd: '',
-		teamPickerDocBound: false
+		teamPickerDocBound: false,
+		coTeamPickerOpen: false,
+		coTeamPickerSlotId: 0,
+		coTeamPickerAnchorX: 0,
+		coTeamPickerAnchorY: 0,
+		coTeamPickerDocBound: false
 	};
 
 	var pending = {
@@ -404,6 +417,47 @@
 		return TEAM_COLORS[Math.abs(id) % TEAM_COLORS.length];
 	}
 
+	function slotTeamIds(s) {
+		var ids = [s.team_id];
+		(s.co_team_ids || []).forEach(function (id) {
+			ids.push(id);
+		});
+		var out = [];
+		var seen = {};
+		ids.forEach(function (id) {
+			var n = parseInt(id, 10);
+			if (!seen[n]) {
+				seen[n] = true;
+				out.push(n);
+			}
+		});
+		return out;
+	}
+
+	function slotTeamBackground(s) {
+		var ids = slotTeamIds(s);
+		if (ids.length === 1) {
+			return teamColor(ids[0]);
+		}
+		var c0 = teamColor(ids[0]);
+		var c1 = teamColor(ids[1] || ids[0]);
+		return 'linear-gradient(135deg,' + c0 + ' 0%,' + c1 + ' 100%)';
+	}
+
+	function rebuildSlotTeamName(slot) {
+		var names = [];
+		slotTeamIds(slot).forEach(function (id) {
+			var t = findTeam(id);
+			if (t && names.indexOf(t.display_name) === -1) {
+				names.push(t.display_name);
+			}
+		});
+		names.sort(function (a, b) {
+			return a.localeCompare(b, undefined, { sensitivity: 'base' });
+		});
+		slot.team_name = names.join(__('teamNameJoin'));
+	}
+
 	function syncSlotSelectionDom() {
 		document.querySelectorAll('.vtc-tppl-block').forEach(function (b) {
 			var sid = parseInt(b.getAttribute('data-slot-id'), 10);
@@ -427,7 +481,12 @@
 		var list = slotsListForTeamCount(weekReadonly);
 		var c = 0;
 		for (var i = 0; i < list.length; i++) {
-			if (list[i].team_id === teamId) c++;
+			var s = list[i];
+			if (s.team_id === teamId) {
+				c++;
+			} else if (Array.isArray(s.co_team_ids) && s.co_team_ids.indexOf(teamId) !== -1) {
+				c++;
+			}
 		}
 		return c;
 	}
@@ -500,6 +559,54 @@
 		return h;
 	}
 
+	function buildCoTeamPickerPopHtml(weekReadonly, inhuur, hasTeams) {
+		if (!state.coTeamPickerOpen || inhuur || !hasTeams) return '';
+		var slot = findSlot(state.coTeamPickerSlotId);
+		if (!slot) return '';
+		var pos = clampTeamPickerPosition(state.coTeamPickerAnchorX + 4, state.coTeamPickerAnchorY + 8);
+		var taken = {};
+		taken[slot.team_id] = true;
+		(slot.co_team_ids || []).forEach(function (id) {
+			taken[id] = true;
+		});
+		var rows = [];
+		(state.data.teams || []).forEach(function (t) {
+			if (!taken[t.id]) rows.push(t);
+		});
+		var h = '<div id="vtc-tppl-coteam-picker" class="vtc-tppl-team-picker vtc-tppl-coteam-picker" role="dialog" aria-label="' + esc(__('addTeamToSlotTitle')) + '" style="left:' + pos.left + 'px;top:' + pos.top + 'px">';
+		h += '<div class="vtc-tppl-coteam-picker-head">' + esc(__('addTeamToSlotTitle')) + '</div>';
+		h += '<ul class="vtc-tppl-team-picker-list">';
+		if (!rows.length) {
+			h += '<li class="vtc-tppl-team-picker-empty">' + esc(__('addTeamToSlotEmpty')) + '</li>';
+		} else {
+			rows.forEach(function (t) {
+				h += '<li><button type="button" class="vtc-tppl-coteam-picker-item" data-team-id="' + t.id + '">';
+				h += '<span class="vtc-tppl-team-picker-dot" style="background:' + teamColor(t.id) + '"></span>';
+				h += '<span class="vtc-tppl-team-picker-name">' + esc(t.display_name) + '</span>';
+				h += '</button></li>';
+			});
+		}
+		h += '</ul></div>';
+		return h;
+	}
+
+	function removeCoTeamPickerDom() {
+		var p = document.getElementById('vtc-tppl-coteam-picker');
+		if (p && p.parentNode) {
+			p.parentNode.removeChild(p);
+		}
+	}
+
+	function openCoTeamPicker(slotId, clientX, clientY) {
+		state.teamPickerOpen = false;
+		state.teamPickerShowAll = false;
+		removeTeamPickerDom();
+		state.coTeamPickerSlotId = slotId;
+		state.coTeamPickerAnchorX = clientX;
+		state.coTeamPickerAnchorY = clientY;
+		state.coTeamPickerOpen = true;
+	}
+
 	function placeTeamAtPickerSlot(teamId) {
 		if (!state.data) return;
 		if (state.data.planner_scope === 'blueprint' && state.data.viewing_published) return;
@@ -509,6 +616,7 @@
 		mergeSlot({
 			id: tid,
 			team_id: teamId,
+			co_team_ids: [],
 			venue_id: state.teamPickerVenueId,
 			day_of_week: state.teamPickerDow,
 			start_time: state.teamPickerStart,
@@ -530,12 +638,23 @@
 	}
 
 	function onDocumentMouseDownClosePicker(e) {
-		if (!state.teamPickerOpen) return;
-		var p = document.getElementById('vtc-tppl-team-picker');
-		if (p && p.contains(e.target)) return;
-		state.teamPickerOpen = false;
-		state.teamPickerShowAll = false;
-		removeTeamPickerDom();
+		var pt = document.getElementById('vtc-tppl-team-picker');
+		var pc = document.getElementById('vtc-tppl-coteam-picker');
+		if (state.teamPickerOpen) {
+			if (pt && pt.contains(e.target)) {
+				return;
+			}
+			state.teamPickerOpen = false;
+			state.teamPickerShowAll = false;
+			removeTeamPickerDom();
+		}
+		if (state.coTeamPickerOpen) {
+			if (pc && pc.contains(e.target)) {
+				return;
+			}
+			state.coTeamPickerOpen = false;
+			removeCoTeamPickerDom();
+		}
 	}
 
 	function onLaneClickOpenTeamPicker(e) {
@@ -546,6 +665,7 @@
 		var weekReadonly = weekScope && !state.data.has_exception && !state.data.uses_deviation_blueprint;
 		if (weekReadonly) return;
 		if (state.data.viewing_published) return;
+		state.coTeamPickerOpen = false;
 		var place = computePlacementFromPoint(e.currentTarget, e.clientX);
 		state.teamPickerVenueId = place.venue_id;
 		state.teamPickerDow = place.day_of_week;
@@ -762,6 +882,7 @@
 							method: 'POST',
 							body: JSON.stringify(withBlueprintBody({
 								team_id: s.team_id,
+								co_team_ids: Array.isArray(s.co_team_ids) ? s.co_team_ids : [],
 								venue_id: s.venue_id,
 								day_of_week: s.day_of_week,
 								start_time: s.start_time,
@@ -841,6 +962,7 @@
 								body: JSON.stringify({
 									exception_week_id: ewid,
 									team_id: s.team_id,
+									co_team_ids: Array.isArray(s.co_team_ids) ? s.co_team_ids : [],
 									venue_id: s.venue_id,
 									day_of_week: s.day_of_week,
 									start_time: s.start_time,
@@ -1179,10 +1301,11 @@
 						if (s.day_of_week !== dow || s.venue_id !== v.id) return;
 						var sel = !gridReadonly && state.selectedSlotIds.has(s.id) ? ' is-selected' : '';
 						var baseCls = gridReadonly ? ' vtc-tppl-block--baseline' : '';
-						html += '<div class="vtc-tppl-block' + baseCls + sel + '" data-slot-id="' + s.id + '" style="left:' + slotStyleLeftPct(s.start_time) + '%;width:' + slotStyleWidthPct(s.start_time, s.end_time) + '%;background:' + teamColor(s.team_id) + '">';
+						html += '<div class="vtc-tppl-block' + baseCls + sel + '" data-slot-id="' + s.id + '" style="left:' + slotStyleLeftPct(s.start_time) + '%;width:' + slotStyleWidthPct(s.start_time, s.end_time) + '%;background:' + slotTeamBackground(s) + '">';
 						if (!gridReadonly) {
 							html += '<div class="vtc-tppl-block-resize vtc-tppl-block-resize--left" data-slot-id="' + s.id + '"></div>';
-							html += '<button type="button" class="vtc-tppl-block-x" data-slot-id="' + s.id + '" title="Verwijderen">&times;</button>';
+							html += '<button type="button" class="vtc-tppl-block-addteam" data-slot-id="' + s.id + '" title="' + esc(__('addTeamToSlot')) + '">+</button>';
+							html += '<button type="button" class="vtc-tppl-block-x" data-slot-id="' + s.id + '" title="' + esc(__('deleteSlot')) + '">&times;</button>';
 						}
 						html += '<span class="vtc-tppl-block-title">' + esc(s.team_name) + '</span>';
 						html += '<span class="vtc-tppl-block-time">' + esc(s.start_time + '–' + s.end_time) + '</span>';
@@ -1198,6 +1321,7 @@
 		}
 		html += '</div></div></div></div>';
 		html += buildTeamPickerPopHtml(gridReadonly, inhuur, hasTeams);
+		html += buildCoTeamPickerPopHtml(gridReadonly, inhuur, hasTeams);
 
 		root.innerHTML = html;
 		bind();
@@ -1447,10 +1571,46 @@
 			document.addEventListener('mousedown', onDocumentMouseDownClosePicker, true);
 		}
 
+		var coPicker = document.getElementById('vtc-tppl-coteam-picker');
+		if (coPicker) {
+			coPicker.querySelectorAll('.vtc-tppl-coteam-picker-item').forEach(function (btn) {
+				btn.addEventListener('click', function (ev) {
+					ev.preventDefault();
+					ev.stopPropagation();
+					var tid = parseInt(btn.getAttribute('data-team-id'), 10);
+					if (!tid) return;
+					var slot = findSlot(state.coTeamPickerSlotId);
+					if (!slot) return;
+					var co = (slot.co_team_ids || []).slice();
+					if (co.indexOf(tid) !== -1 || slot.team_id === tid) return;
+					co.push(tid);
+					co.sort(function (a, b) {
+						return a - b;
+					});
+					recordSlotChange(slot.id, { co_team_ids: co });
+					rebuildSlotTeamName(findSlot(slot.id));
+					state.coTeamPickerOpen = false;
+					removeCoTeamPickerDom();
+					markDirty();
+					render();
+					showToast(__('coTeamAdded'), true);
+				});
+			});
+		}
+
 		if (!inhuur) {
 			root.querySelectorAll('.vtc-tppl-block:not(.vtc-tppl-block--baseline)').forEach(function (block) {
 				block.addEventListener('pointerdown', onBlockPointerDown);
 				block.addEventListener('dblclick', onBlockDblClick);
+			});
+			root.querySelectorAll('.vtc-tppl-block-addteam').forEach(function (btn) {
+				btn.addEventListener('click', function (e) {
+					e.stopPropagation();
+					e.preventDefault();
+					var sid = parseInt(btn.getAttribute('data-slot-id'), 10);
+					openCoTeamPicker(sid, e.clientX, e.clientY);
+					render();
+				});
 			});
 			root.querySelectorAll('.vtc-tppl-block-x').forEach(function (btn) {
 				btn.addEventListener('click', function (e) {
@@ -1514,6 +1674,11 @@
 			state.teamPickerOpen = false;
 			state.teamPickerShowAll = false;
 			removeTeamPickerDom();
+			return;
+		}
+		if (e.key === 'Escape' && state.coTeamPickerOpen) {
+			state.coTeamPickerOpen = false;
+			removeCoTeamPickerDom();
 			return;
 		}
 		if ((e.key === 'Delete' || e.key === 'Backspace') && state.workMode === 'teams' && state.selectedSlotIds.size > 0) {
@@ -1841,7 +2006,7 @@
 	}
 
 	function onBlockPointerDown(e) {
-		if (e.target.closest('.vtc-tppl-block-x') || e.target.closest('.vtc-tppl-block-resize')) return;
+		if (e.target.closest('.vtc-tppl-block-x') || e.target.closest('.vtc-tppl-block-addteam') || e.target.closest('.vtc-tppl-block-resize')) return;
 		var block = e.currentTarget;
 		var id = parseInt(block.getAttribute('data-slot-id'), 10);
 		var multi = e.ctrlKey || e.metaKey;
@@ -2112,6 +2277,7 @@
 		var slot = {
 			id: tid,
 			team_id: teamId,
+			co_team_ids: [],
 			venue_id: place.venue_id,
 			day_of_week: place.day_of_week,
 			start_time: place.start_time,

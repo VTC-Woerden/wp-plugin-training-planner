@@ -221,7 +221,20 @@ class VTC_TP_Schedule {
 			$end_dt   = new DateTimeImmutable( $date . ' ' . $en, $tz );
 			$tid      = (int) $slot->team_id;
 			$vid      = (int) $slot->venue_id;
-			$team     = $teams[ $tid ] ?? null;
+			$co_ids   = VTC_TP_DB::parse_co_team_ids_from_row( $slot );
+			$title_ids = array_merge( array( $tid ), $co_ids );
+			$title_ids = array_values( array_unique( array_map( 'intval', $title_ids ) ) );
+			$titles   = array();
+			foreach ( $title_ids as $id ) {
+				if ( ! empty( $teams[ $id ] ) && isset( $teams[ $id ]->display_name ) ) {
+					$titles[] = (string) $teams[ $id ]->display_name;
+				}
+			}
+			$titles = array_values( array_unique( $titles ) );
+			usort( $titles, 'strnatcasecmp' );
+			$title_combined = ! empty( $titles )
+				? implode( __( ' + ', 'vtc-training-planner' ), $titles )
+				: __( 'Team', 'vtc-training-planner' );
 			$venue    = $venues[ $vid ] ?? null;
 			$loc_label = $venue ? $venue->location_name : '';
 			$vtype = ( $venue && isset( $venue->venue_type ) && 'field' === $venue->venue_type ) ? __( 'Buitenveld', 'vtc-training-planner' ) : __( 'Zaal', 'vtc-training-planner' );
@@ -229,7 +242,7 @@ class VTC_TP_Schedule {
 				'type'           => 'training',
 				'start_ts'       => $start_dt->getTimestamp(),
 				'end_ts'         => $end_dt->getTimestamp(),
-				'title'          => $team ? $team->display_name : __( 'Team', 'vtc-training-planner' ),
+				'title'          => $title_combined,
 				'subtitle'       => __( 'Training', 'vtc-training-planner' ) . ' · ' . $vtype,
 				'venue_id'       => $vid,
 				'location_label' => $loc_label,
@@ -247,6 +260,91 @@ class VTC_TP_Schedule {
 		);
 
 		return $events;
+	}
+
+	/**
+	 * Meerdere teams op hetzelfde veld in hetzelfde tijdsslot samenvoegen (voorkant: "Team A + Team B").
+	 *
+	 * @param array<int, array<string, mixed>> $training_events Alleen type training.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function coalesce_shared_training_slots( array $training_events ) {
+		if ( count( $training_events ) === 0 ) {
+			return $training_events;
+		}
+		$by_key = array();
+		foreach ( $training_events as $ev ) {
+			$k = (int) ( $ev['start_ts'] ?? 0 ) . '|' . (int) ( $ev['end_ts'] ?? 0 ) . '|' . (int) ( $ev['venue_id'] ?? 0 );
+			if ( ! isset( $by_key[ $k ] ) ) {
+				$by_key[ $k ] = array();
+			}
+			$by_key[ $k ][] = $ev;
+		}
+		$out = array();
+		foreach ( $by_key as $grp ) {
+			if ( count( $grp ) === 1 ) {
+				$out[] = $grp[0];
+				continue;
+			}
+			$titles = array();
+			foreach ( $grp as $g ) {
+				$t = isset( $g['title'] ) ? trim( (string) $g['title'] ) : '';
+				if ( '' !== $t && ! in_array( $t, $titles, true ) ) {
+					$titles[] = $t;
+				}
+			}
+			if ( count( $titles ) < 2 ) {
+				$out[] = $grp[0];
+				continue;
+			}
+			usort( $titles, 'strnatcasecmp' );
+			$base = $grp[0];
+			unset( $base['conflict'] );
+			$base['title'] = implode( __( ' + ', 'vtc-training-planner' ), $titles );
+			$out[]         = $base;
+		}
+		usort(
+			$out,
+			function ( $a, $b ) {
+				$c = ( (int) ( $a['start_ts'] ?? 0 ) ) <=> ( (int) ( $b['start_ts'] ?? 0 ) );
+				if ( 0 !== $c ) {
+					return $c;
+				}
+				return strcmp( (string) ( $a['type'] ?? '' ), (string) ( $b['type'] ?? '' ) );
+			}
+		);
+		return $out;
+	}
+
+	/**
+	 * Zelfde als coalesce_shared_training_slots maar op een gemengde eventlijst (training + wedstrijd).
+	 *
+	 * @param array<int, array<string, mixed>> $mixed_events
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function coalesce_shared_training_events( array $mixed_events ) {
+		$train = array();
+		$other = array();
+		foreach ( $mixed_events as $ev ) {
+			if ( isset( $ev['type'] ) && 'training' === $ev['type'] ) {
+				$train[] = $ev;
+			} else {
+				$other[] = $ev;
+			}
+		}
+		$train = $this->coalesce_shared_training_slots( $train );
+		$all   = array_merge( $other, $train );
+		usort(
+			$all,
+			function ( $a, $b ) {
+				$c = ( (int) ( $a['start_ts'] ?? 0 ) ) <=> ( (int) ( $b['start_ts'] ?? 0 ) );
+				if ( 0 !== $c ) {
+					return $c;
+				}
+				return strcmp( (string) ( $a['type'] ?? '' ), (string) ( $b['type'] ?? '' ) );
+			}
+		);
+		return $all;
 	}
 
 	/**
@@ -309,6 +407,7 @@ class VTC_TP_Schedule {
 
 	/**
 	 * Merge training + match events en markeer tijd-overlap per hall_key (training: venue_id; wedstrijd: zaalnaam uit RSS).
+	 * Training+training op hetzelfde veld is toegestaan (gezamenlijk gebruik); training+wedstrijd nog steeds conflict.
 	 *
 	 * @return array<int, array<string, mixed>>
 	 */
@@ -343,6 +442,11 @@ class VTC_TP_Schedule {
 					$ea = $all[ $ia ];
 					$eb = $all[ $ib ];
 					if ( $ea['end_ts'] > $eb['start_ts'] && $eb['end_ts'] > $ea['start_ts'] ) {
+						$ta = isset( $ea['type'] ) ? (string) $ea['type'] : '';
+						$tb = isset( $eb['type'] ) ? (string) $eb['type'] : '';
+						if ( 'training' === $ta && 'training' === $tb ) {
+							continue;
+						}
 						$all[ $ia ]['conflict'] = true;
 						$all[ $ib ]['conflict'] = true;
 					}
@@ -378,6 +482,7 @@ class VTC_TP_Schedule {
 		}
 
 		$match_ev = $this->matches_to_events( $week );
+		$train    = $this->coalesce_shared_training_slots( $train );
 		$events   = $this->merge_and_flag_conflicts( $train, $match_ev );
 
 		return array(
@@ -423,6 +528,6 @@ class VTC_TP_Schedule {
 		if ( empty( $extra ) ) {
 			return $events;
 		}
-		return $this->merge_and_flag_conflicts( $events, $extra );
+		return $this->coalesce_shared_training_events( $this->merge_and_flag_conflicts( $events, $extra ) );
 	}
 }

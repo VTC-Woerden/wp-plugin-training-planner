@@ -277,6 +277,42 @@ class VTC_TP_Rest_Admin {
 		return (int) $m[1] * 60 + (int) $m[2];
 	}
 
+	/**
+	 * Planner-slot voor API/JS (één blok met samengestelde teamnaam).
+	 *
+	 * @param object               $s            DB-rij slot_draft / slot_published / exception_slot.
+	 * @param array<int, string>   $team_names  team_id => display_name.
+	 * @param array<int, string>   $venue_labels venue_id => label.
+	 * @return array<string, mixed>
+	 */
+	private function planner_slot_to_array( $s, array $team_names, array $venue_labels ) {
+		$tid = (int) $s->team_id;
+		$vid = (int) $s->venue_id;
+		$co  = VTC_TP_DB::parse_co_team_ids_from_row( $s );
+		$ids = array_merge( array( $tid ), $co );
+		$ids = array_values( array_unique( array_map( 'intval', $ids ) ) );
+		$names = array();
+		foreach ( $ids as $id ) {
+			if ( ! empty( $team_names[ $id ] ) ) {
+				$names[] = (string) $team_names[ $id ];
+			}
+		}
+		$names = array_values( array_unique( $names ) );
+		usort( $names, 'strnatcasecmp' );
+		$glue = __( ' + ', 'vtc-training-planner' );
+		return array(
+			'id'            => (int) $s->id,
+			'team_id'       => $tid,
+			'co_team_ids'   => $co,
+			'venue_id'      => $vid,
+			'day_of_week'   => (int) $s->day_of_week,
+			'start_time'    => $s->start_time,
+			'end_time'      => $s->end_time,
+			'team_name'     => ! empty( $names ) ? implode( $glue, $names ) : ( '#' . $tid ),
+			'venue_label'   => $venue_labels[ $vid ] ?? ( '#' . $vid ),
+		);
+	}
+
 	public function get_planner( WP_REST_Request $req ) {
 		$bp = $this->resolve_blueprint_id( $req );
 		if ( ! $bp ) {
@@ -309,18 +345,7 @@ class VTC_TP_Rest_Admin {
 
 		$out_slots = array();
 		foreach ( $slots as $s ) {
-			$tid = (int) $s->team_id;
-			$vid = (int) $s->venue_id;
-			$out_slots[] = array(
-				'id'           => (int) $s->id,
-				'team_id'      => $tid,
-				'venue_id'     => $vid,
-				'day_of_week'  => (int) $s->day_of_week,
-				'start_time'   => $s->start_time,
-				'end_time'     => $s->end_time,
-				'team_name'    => $team_names[ $tid ] ?? ( '#' . $tid ),
-				'venue_label'  => $venue_labels[ $vid ] ?? ( '#' . $vid ),
-			);
+			$out_slots[] = $this->planner_slot_to_array( $s, $team_names, $venue_labels );
 		}
 
 		$teams_out = array();
@@ -433,34 +458,12 @@ class VTC_TP_Rest_Admin {
 		$has_ex     = (bool) $ex;
 		if ( $ex ) {
 			foreach ( $this->db->get_exception_slots( $ex_id ) as $s ) {
-				$tid = (int) $s->team_id;
-				$vid = (int) $s->venue_id;
-				$out_slots[] = array(
-					'id'           => (int) $s->id,
-					'team_id'      => $tid,
-					'venue_id'     => $vid,
-					'day_of_week'  => (int) $s->day_of_week,
-					'start_time'   => $s->start_time,
-					'end_time'     => $s->end_time,
-					'team_name'    => $team_names[ $tid ] ?? ( '#' . $tid ),
-					'venue_label'  => $venue_labels[ $vid ] ?? ( '#' . $vid ),
-				);
+				$out_slots[] = $this->planner_slot_to_array( $s, $team_names, $venue_labels );
 			}
 		} elseif ( $bp !== $base_bp ) {
 			// Afwijkende blauwdruk actief zonder handmatige uitzonderingsweek: toon live weekpatroon van deze blauwdruk.
 			foreach ( $this->db->get_slots_published_or_draft( $bp ) as $s ) {
-				$tid = (int) $s->team_id;
-				$vid = (int) $s->venue_id;
-				$out_slots[] = array(
-					'id'           => (int) $s->id,
-					'team_id'      => $tid,
-					'venue_id'     => $vid,
-					'day_of_week'  => (int) $s->day_of_week,
-					'start_time'   => $s->start_time,
-					'end_time'     => $s->end_time,
-					'team_name'    => $team_names[ $tid ] ?? ( '#' . $tid ),
-					'venue_label'  => $venue_labels[ $vid ] ?? ( '#' . $vid ),
-				);
+				$out_slots[] = $this->planner_slot_to_array( $s, $team_names, $venue_labels );
 			}
 		}
 
@@ -476,18 +479,9 @@ class VTC_TP_Rest_Admin {
 		}
 		$baseline_slots = array();
 		foreach ( $this->db->get_slots_published_or_draft( $base_bp ) as $s ) {
-			$tid = (int) $s->team_id;
-			$vid = (int) $s->venue_id;
-			$baseline_slots[] = array(
-				'id'           => (int) $s->id,
-				'team_id'      => $tid,
-				'venue_id'     => $vid,
-				'day_of_week'  => (int) $s->day_of_week,
-				'start_time'   => $s->start_time,
-				'end_time'     => $s->end_time,
-				'team_name'    => $bp === $base_bp ? ( $team_names[ $tid ] ?? ( '#' . $tid ) ) : ( $baseline_team_names[ $tid ] ?? ( '#' . $tid ) ),
-				'venue_label'  => $bp === $base_bp ? ( $venue_labels[ $vid ] ?? ( '#' . $vid ) ) : ( $baseline_venue_labels[ $vid ] ?? ( '#' . $vid ) ),
-			);
+			$tn = $bp === $base_bp ? $team_names : $baseline_team_names;
+			$vl = $bp === $base_bp ? $venue_labels : $baseline_venue_labels;
+			$baseline_slots[] = $this->planner_slot_to_array( $s, $tn, $vl );
 		}
 
 		$un_rows = $this->db->get_unavailability_for_blueprint( $bp );
@@ -595,8 +589,13 @@ class VTC_TP_Rest_Admin {
 		if ( ! $st || ! $en || $this->minutes( $en ) <= $this->minutes( $st ) ) {
 			return new WP_Error( 'bad_time', __( 'Ongeldige tijden.', 'vtc-training-planner' ), array( 'status' => 400 ) );
 		}
-		$new_id = $this->db->insert_exception_slot( $ewid, $tid, $vid, $dow, $st, $en );
-		$row    = $this->db->get_exception_slot_row( $new_id );
+		$co_arr  = array();
+		if ( isset( $params['co_team_ids'] ) && is_array( $params['co_team_ids'] ) ) {
+			$co_arr = VTC_TP_DB::normalize_co_team_ids_input( $tid, $params['co_team_ids'], $team_ok );
+		}
+		$co_json = VTC_TP_DB::co_team_ids_to_db_value( $co_arr );
+		$new_id  = $this->db->insert_exception_slot( $ewid, $tid, $vid, $dow, $st, $en, $co_json );
+		$row     = $this->db->get_exception_slot_row( $new_id );
 		return $this->exception_slot_response( $row, $bp );
 	}
 
@@ -650,6 +649,19 @@ class VTC_TP_Rest_Admin {
 				return new WP_Error( 'bad_range', __( 'Eindtijd moet na starttijd liggen.', 'vtc-training-planner' ), array( 'status' => 400 ) );
 			}
 		}
+		$team_ok = $this->valid_team_ids( $bp );
+		$primary = isset( $params['team_id'] ) ? (int) $params['team_id'] : (int) $meta->team_id;
+		if ( array_key_exists( 'co_team_ids', $params ) ) {
+			$co_in = is_array( $params['co_team_ids'] ) ? $params['co_team_ids'] : array();
+			$fields['co_team_ids'] = VTC_TP_DB::co_team_ids_to_db_value(
+				VTC_TP_DB::normalize_co_team_ids_input( $primary, $co_in, $team_ok )
+			);
+		} elseif ( isset( $params['team_id'] ) ) {
+			$existing              = VTC_TP_DB::parse_co_team_ids_from_row( $meta );
+			$fields['co_team_ids'] = VTC_TP_DB::co_team_ids_to_db_value(
+				VTC_TP_DB::normalize_co_team_ids_input( $primary, $existing, $team_ok )
+			);
+		}
 		if ( empty( $fields ) ) {
 			$row = $this->db->get_exception_slot_row( $sid );
 			return $this->exception_slot_response( $row, $bp );
@@ -691,8 +703,13 @@ class VTC_TP_Rest_Admin {
 		if ( ! $st || ! $en || $this->minutes( $en ) <= $this->minutes( $st ) ) {
 			return new WP_Error( 'bad_time', __( 'Ongeldige tijden.', 'vtc-training-planner' ), array( 'status' => 400 ) );
 		}
-		$new_id = $this->db->insert_slot_draft( $bp, $tid, $vid, $dow, $st, $en );
-		$row    = $this->db->get_slot_draft( $new_id );
+		$co_arr  = array();
+		if ( isset( $params['co_team_ids'] ) && is_array( $params['co_team_ids'] ) ) {
+			$co_arr = VTC_TP_DB::normalize_co_team_ids_input( $tid, $params['co_team_ids'], $team_ok );
+		}
+		$co_json = VTC_TP_DB::co_team_ids_to_db_value( $co_arr );
+		$new_id  = $this->db->insert_slot_draft( $bp, $tid, $vid, $dow, $st, $en, $co_json );
+		$row     = $this->db->get_slot_draft( $new_id );
 		if ( ! $row || (int) $row->blueprint_id !== $bp ) {
 			return new WP_Error( 'insert_fail', __( 'Opslaan mislukt.', 'vtc-training-planner' ), array( 'status' => 500 ) );
 		}
@@ -751,6 +768,19 @@ class VTC_TP_Rest_Admin {
 			if ( $this->minutes( $en ) <= $this->minutes( $st ) ) {
 				return new WP_Error( 'bad_range', __( 'Eindtijd moet na starttijd liggen.', 'vtc-training-planner' ), array( 'status' => 400 ) );
 			}
+		}
+		$team_ok = $this->valid_team_ids( $bp );
+		$primary = isset( $params['team_id'] ) ? (int) $params['team_id'] : (int) $row->team_id;
+		if ( array_key_exists( 'co_team_ids', $params ) ) {
+			$co_in = is_array( $params['co_team_ids'] ) ? $params['co_team_ids'] : array();
+			$fields['co_team_ids'] = VTC_TP_DB::co_team_ids_to_db_value(
+				VTC_TP_DB::normalize_co_team_ids_input( $primary, $co_in, $team_ok )
+			);
+		} elseif ( isset( $params['team_id'] ) ) {
+			$existing              = VTC_TP_DB::parse_co_team_ids_from_row( $row );
+			$fields['co_team_ids'] = VTC_TP_DB::co_team_ids_to_db_value(
+				VTC_TP_DB::normalize_co_team_ids_input( $primary, $existing, $team_ok )
+			);
 		}
 		if ( empty( $fields ) ) {
 			return $this->slot_response( $row, $bp );
@@ -1035,20 +1065,9 @@ class VTC_TP_Rest_Admin {
 		foreach ( $this->db->get_venues_for_blueprint( $bp ) as $v ) {
 			$venue_labels[ (int) $v->id ] = $v->location_name . ' — ' . $v->name;
 		}
-		$tid = (int) $row->team_id;
-		$vid = (int) $row->venue_id;
 		return rest_ensure_response(
 			array(
-				'slot' => array(
-					'id'           => (int) $row->id,
-					'team_id'      => $tid,
-					'venue_id'     => $vid,
-					'day_of_week'  => (int) $row->day_of_week,
-					'start_time'   => $row->start_time,
-					'end_time'     => $row->end_time,
-					'team_name'    => $team_names[ $tid ] ?? '',
-					'venue_label'  => $venue_labels[ $vid ] ?? '',
-				),
+				'slot' => $this->planner_slot_to_array( $row, $team_names, $venue_labels ),
 			)
 		);
 	}
@@ -1062,20 +1081,9 @@ class VTC_TP_Rest_Admin {
 		foreach ( $this->db->get_venues_for_blueprint( $bp ) as $v ) {
 			$venue_labels[ (int) $v->id ] = $v->location_name . ' — ' . $v->name;
 		}
-		$tid = (int) $row->team_id;
-		$vid = (int) $row->venue_id;
 		return rest_ensure_response(
 			array(
-				'slot'          => array(
-					'id'           => (int) $row->id,
-					'team_id'      => $tid,
-					'venue_id'     => $vid,
-					'day_of_week'  => (int) $row->day_of_week,
-					'start_time'   => $row->start_time,
-					'end_time'     => $row->end_time,
-					'team_name'    => $team_names[ $tid ] ?? '',
-					'venue_label'  => $venue_labels[ $vid ] ?? '',
-				),
+				'slot'          => $this->planner_slot_to_array( $row, $team_names, $venue_labels ),
 				'draft_differs' => $this->db->draft_differs_from_published( $bp ),
 			)
 		);

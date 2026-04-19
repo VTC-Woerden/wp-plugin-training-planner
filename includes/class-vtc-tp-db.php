@@ -775,19 +775,21 @@ class VTC_TP_DB {
 		$wpdb->delete( "{$p}vtc_tp_slot_published", array( 'blueprint_version_id' => $edit_vid ), array( '%d' ) );
 		$draft = $this->get_slots_draft( $blueprint_id, $edit_vid );
 		foreach ( $draft as $row ) {
-			$wpdb->insert(
-				"{$p}vtc_tp_slot_published",
-				array(
-					'blueprint_id'         => (int) $blueprint_id,
-					'blueprint_version_id' => (int) $edit_vid,
-					'team_id'              => (int) $row->team_id,
-					'venue_id'             => (int) $row->venue_id,
-					'day_of_week'          => (int) $row->day_of_week,
-					'start_time'           => $row->start_time,
-					'end_time'             => $row->end_time,
-				),
-				array( '%d', '%d', '%d', '%d', '%d', '%s', '%s' )
+			$pub = array(
+				'blueprint_id'         => (int) $blueprint_id,
+				'blueprint_version_id' => (int) $edit_vid,
+				'team_id'              => (int) $row->team_id,
+				'venue_id'             => (int) $row->venue_id,
+				'day_of_week'          => (int) $row->day_of_week,
+				'start_time'           => $row->start_time,
+				'end_time'             => $row->end_time,
 			);
+			$pfmt = array( '%d', '%d', '%d', '%d', '%d', '%s', '%s' );
+			if ( isset( $row->co_team_ids ) && null !== $row->co_team_ids && '' !== $row->co_team_ids ) {
+				$pub['co_team_ids'] = $row->co_team_ids;
+				$pfmt[]             = '%s';
+			}
+			$wpdb->insert( "{$p}vtc_tp_slot_published", $pub, $pfmt );
 		}
 		$wpdb->query( $wpdb->prepare( "UPDATE {$p}vtc_tp_blueprint_version SET is_published = 0 WHERE blueprint_id = %d", (int) $blueprint_id ) );
 		$wpdb->update(
@@ -819,6 +821,7 @@ class VTC_TP_DB {
 					'|',
 					array(
 						$r->team_id,
+						isset( $r->co_team_ids ) ? (string) $r->co_team_ids : '',
 						$r->venue_id,
 						$r->day_of_week,
 						$r->start_time,
@@ -842,13 +845,13 @@ class VTC_TP_DB {
 	}
 
 	/**
-	 * @param array{team_id?:int,venue_id?:int,day_of_week?:int,start_time?:string,end_time?:string} $fields
+	 * @param array{team_id?:int,venue_id?:int,day_of_week?:int,start_time?:string,end_time?:string,co_team_ids?:string|null} $fields
 	 * @return bool
 	 */
 	public function update_slot_draft( $slot_id, array $fields ) {
 		global $wpdb;
 		$p     = $wpdb->prefix;
-		$allow = array( 'team_id', 'venue_id', 'day_of_week', 'start_time', 'end_time' );
+		$allow = array( 'team_id', 'venue_id', 'day_of_week', 'start_time', 'end_time', 'co_team_ids' );
 		$data  = array();
 		$fmt   = array();
 		foreach ( $allow as $k ) {
@@ -870,27 +873,30 @@ class VTC_TP_DB {
 
 	/**
 	 * @return int insert id
+	 * @param string|null $co_team_ids_json JSON-array van extra team-id's, of null.
 	 */
-	public function insert_slot_draft( $blueprint_id, $team_id, $venue_id, $day_of_week, $start_time, $end_time ) {
+	public function insert_slot_draft( $blueprint_id, $team_id, $venue_id, $day_of_week, $start_time, $end_time, $co_team_ids_json = null ) {
 		global $wpdb;
 		$p   = $wpdb->prefix;
 		$vid = $this->get_editing_version_id_for_blueprint( (int) $blueprint_id );
 		if ( ! $vid ) {
 			return 0;
 		}
-		$wpdb->insert(
-			"{$p}vtc_tp_slot_draft",
-			array(
-				'blueprint_id'         => (int) $blueprint_id,
-				'blueprint_version_id' => (int) $vid,
-				'team_id'              => (int) $team_id,
-				'venue_id'             => (int) $venue_id,
-				'day_of_week'          => min( 6, max( 0, (int) $day_of_week ) ),
-				'start_time'           => $start_time,
-				'end_time'             => $end_time,
-			),
-			array( '%d', '%d', '%d', '%d', '%d', '%s', '%s' )
+		$ins = array(
+			'blueprint_id'         => (int) $blueprint_id,
+			'blueprint_version_id' => (int) $vid,
+			'team_id'              => (int) $team_id,
+			'venue_id'             => (int) $venue_id,
+			'day_of_week'          => min( 6, max( 0, (int) $day_of_week ) ),
+			'start_time'           => $start_time,
+			'end_time'             => $end_time,
 		);
+		$fmt = array( '%d', '%d', '%d', '%d', '%d', '%s', '%s' );
+		if ( null !== $co_team_ids_json && '' !== $co_team_ids_json ) {
+			$ins['co_team_ids'] = $co_team_ids_json;
+			$fmt[]              = '%s';
+		}
+		$wpdb->insert( "{$p}vtc_tp_slot_draft", $ins, $fmt );
 		return (int) $wpdb->insert_id;
 	}
 
@@ -946,7 +952,8 @@ class VTC_TP_DB {
 				(int) $r->venue_id,
 				(int) $r->day_of_week,
 				(string) $r->start_time,
-				(string) $r->end_time
+				(string) $r->end_time,
+				isset( $r->co_team_ids ) ? $r->co_team_ids : null
 			);
 		}
 	}
@@ -990,34 +997,37 @@ class VTC_TP_DB {
 	}
 
 	/**
+	 * @param string|null $co_team_ids_json JSON-array of extra team ids.
 	 * @return int insert id
 	 */
-	public function insert_exception_slot( $exception_week_id, $team_id, $venue_id, $day_of_week, $start_time, $end_time ) {
+	public function insert_exception_slot( $exception_week_id, $team_id, $venue_id, $day_of_week, $start_time, $end_time, $co_team_ids_json = null ) {
 		global $wpdb;
 		$p = $wpdb->prefix;
-		$wpdb->insert(
-			"{$p}vtc_tp_exception_slot",
-			array(
-				'exception_week_id' => (int) $exception_week_id,
-				'team_id'           => (int) $team_id,
-				'venue_id'          => (int) $venue_id,
-				'day_of_week'       => min( 6, max( 0, (int) $day_of_week ) ),
-				'start_time'        => $start_time,
-				'end_time'          => $end_time,
-			),
-			array( '%d', '%d', '%d', '%d', '%s', '%s' )
+		$ins = array(
+			'exception_week_id' => (int) $exception_week_id,
+			'team_id'           => (int) $team_id,
+			'venue_id'          => (int) $venue_id,
+			'day_of_week'       => min( 6, max( 0, (int) $day_of_week ) ),
+			'start_time'        => $start_time,
+			'end_time'          => $end_time,
 		);
+		$fmt = array( '%d', '%d', '%d', '%d', '%s', '%s' );
+		if ( null !== $co_team_ids_json && '' !== $co_team_ids_json ) {
+			$ins['co_team_ids'] = $co_team_ids_json;
+			$fmt[]              = '%s';
+		}
+		$wpdb->insert( "{$p}vtc_tp_exception_slot", $ins, $fmt );
 		return (int) $wpdb->insert_id;
 	}
 
 	/**
-	 * @param array{team_id?:int,venue_id?:int,day_of_week?:int,start_time?:string,end_time?:string} $fields
+	 * @param array{team_id?:int,venue_id?:int,day_of_week?:int,start_time?:string,end_time?:string,co_team_ids?:string|null} $fields
 	 * @return bool
 	 */
 	public function update_exception_slot( $slot_id, array $fields ) {
 		global $wpdb;
 		$p     = $wpdb->prefix;
-		$allow = array( 'team_id', 'venue_id', 'day_of_week', 'start_time', 'end_time' );
+		$allow = array( 'team_id', 'venue_id', 'day_of_week', 'start_time', 'end_time', 'co_team_ids' );
 		$data  = array();
 		$fmt   = array();
 		foreach ( $allow as $k ) {
@@ -1044,5 +1054,62 @@ class VTC_TP_DB {
 		global $wpdb;
 		$p = $wpdb->prefix;
 		return $wpdb->delete( "{$p}vtc_tp_exception_slot", array( 'id' => (int) $slot_id ), array( '%d' ) );
+	}
+
+	/**
+	 * Extra team-id's op een slot (JSON in DB), exclusief primair team_id.
+	 *
+	 * @param object $row Slot-rij met optioneel co_team_ids.
+	 * @return array<int, int>
+	 */
+	public static function parse_co_team_ids_from_row( $row ) {
+		if ( ! is_object( $row ) || ! isset( $row->co_team_ids ) || null === $row->co_team_ids || '' === $row->co_team_ids ) {
+			return array();
+		}
+		$j = json_decode( (string) $row->co_team_ids, true );
+		if ( ! is_array( $j ) ) {
+			return array();
+		}
+		$out = array();
+		foreach ( $j as $id ) {
+			$id = (int) $id;
+			if ( $id > 0 ) {
+				$out[] = $id;
+			}
+		}
+		return array_values( array_unique( $out ) );
+	}
+
+	/**
+	 * @param int                  $primary_team_id Hoofdteam (team_id-kolom).
+	 * @param array<int, mixed>    $input           Ruwe id-lijst uit API.
+	 * @param array<int, object>   $valid_team_ids  Set van geldige team-id's (keys = ids).
+	 * @return array<int, int> Gesorteerde unieke id's zonder primary.
+	 */
+	public static function normalize_co_team_ids_input( $primary_team_id, array $input, array $valid_team_ids ) {
+		$primary_team_id = (int) $primary_team_id;
+		$seen            = array( $primary_team_id => true );
+		$out             = array();
+		foreach ( $input as $id ) {
+			$id = (int) $id;
+			if ( $id < 1 || isset( $seen[ $id ] ) || ! isset( $valid_team_ids[ $id ] ) ) {
+				continue;
+			}
+			$seen[ $id ] = true;
+			$out[]       = $id;
+		}
+		sort( $out, SORT_NUMERIC );
+		return $out;
+	}
+
+	/**
+	 * @param array<int, int> $ids Genormaliseerde co-team id's.
+	 * @return string|null JSON of null als leeg (voor DB NULL).
+	 */
+	public static function co_team_ids_to_db_value( array $ids ) {
+		if ( empty( $ids ) ) {
+			return null;
+		}
+		return wp_json_encode( array_values( $ids ) );
 	}
 }

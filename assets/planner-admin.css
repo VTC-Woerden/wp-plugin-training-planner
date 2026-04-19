@@ -710,6 +710,36 @@
 	margin-top: 1px;
 }
 
+.vtc-tppl-block-addteam {
+	position: absolute;
+	top: 1px;
+	right: 22px;
+	width: 18px;
+	height: 18px;
+	padding: 0;
+	line-height: 16px;
+	text-align: center;
+	border: none;
+	border-radius: 3px;
+	background: rgba(255, 255, 255, 0.25);
+	color: #fff;
+	font-size: 15px;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.vtc-tppl-block-addteam:hover {
+	background: rgba(255, 255, 255, 0.4);
+}
+
+.vtc-tppl-coteam-picker-head {
+	padding: 8px 10px 6px;
+	font-size: 12px;
+	font-weight: 600;
+	color: #1d2327;
+	border-bottom: 1px solid #dcdcde;
+}
+
 .vtc-tppl-block-x {
 	position: absolute;
 	top: 1px;
