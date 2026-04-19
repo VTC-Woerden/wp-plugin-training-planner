@@ -366,14 +366,13 @@ class VTC_TP_Admin {
 						array(
 							'display_name'           => sanitize_text_field( $row['display_name'] ?? '' ),
 							'nevobo_team_type'         => sanitize_text_field( $row['nevobo_team_type'] ?? '' ),
-							'nevobo_number'            => max( 1, absint( $row['nevobo_number'] ?? 1 ) ),
 							'sort_order'               => absint( $row['sort_order'] ?? 0 ),
 							'trainings_per_week'       => max( 0, absint( $row['trainings_per_week'] ?? 2 ) ),
 							'min_training_minutes'     => max( 1, absint( $row['min_training_minutes'] ?? 90 ) ),
 							'max_training_minutes'     => max( 1, absint( $row['max_training_minutes'] ?? 90 ) ),
 						),
 						array( 'id' => $tid ),
-						array( '%s', '%s', '%d', '%d', '%d', '%d', '%d' ),
+						array( '%s', '%s', '%d', '%d', '%d', '%d' ),
 						array( '%d' )
 					);
 				}
@@ -720,7 +719,7 @@ class VTC_TP_Admin {
 				<?php endforeach; ?>
 				| <a href="<?php echo esc_url( admin_url( 'admin.php?page=vtc-training-blueprints' ) ); ?>"><?php esc_html_e( 'Blauwdrukken beheren', 'vtc-training-planner' ); ?></a>
 			</p>
-			<p class="description"><?php esc_html_e( 'Zelfde structuur als de Team-app: vereniging (clubs), teams met Nevobo-type/nummer, locaties met optionele Nevobo-zaalnaam, velden met type zaal/buiten en optionele veld-slug.', 'vtc-training-planner' ); ?></p>
+			<p class="description"><?php esc_html_e( 'Zelfde structuur als de Team-app: vereniging (clubs), teams met Nevobo-type, locaties met optionele Nevobo-zaalnaam, velden met type zaal/buiten en optionele veld-slug.', 'vtc-training-planner' ); ?></p>
 
 			<h2><?php esc_html_e( 'Vereniging', 'vtc-training-planner' ); ?></h2>
 			<form method="post" class="vtc-tp-club-form">
@@ -748,7 +747,7 @@ class VTC_TP_Admin {
 			</form>
 
 			<h2><?php esc_html_e( 'Teams', 'vtc-training-planner' ); ?></h2>
-			<p class="description"><?php esc_html_e( 'Komt overeen met teams in Team: display_name, nevobo_team_type (bv. dames-senioren, jongens-a), nevobo_number, trainings_per_week, min/max minuten.', 'vtc-training-planner' ); ?></p>
+			<p class="description"><?php esc_html_e( 'Komt overeen met teams in Team: display_name, nevobo_team_type (bv. dames-senioren, jongens-a), trainings per week, min/max minuten.', 'vtc-training-planner' ); ?></p>
 			<form method="post">
 				<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
 				<input type="hidden" name="vtc_tp_action" value="save_all_teams" />
@@ -757,7 +756,6 @@ class VTC_TP_Admin {
 						<tr>
 							<th><?php esc_html_e( 'Weergavenaam', 'vtc-training-planner' ); ?></th>
 							<th><?php esc_html_e( 'Nevobo team-type', 'vtc-training-planner' ); ?></th>
-							<th><?php esc_html_e( 'Nr', 'vtc-training-planner' ); ?></th>
 							<th><?php esc_html_e( 'Tr/wk', 'vtc-training-planner' ); ?></th>
 							<th><?php esc_html_e( 'Min', 'vtc-training-planner' ); ?></th>
 							<th><?php esc_html_e( 'Max', 'vtc-training-planner' ); ?></th>
@@ -770,7 +768,6 @@ class VTC_TP_Admin {
 						<tr>
 							<td><input name="teams[<?php echo (int) $t->id; ?>][display_name]" value="<?php echo esc_attr( $t->display_name ); ?>" class="regular-text" required /></td>
 							<td><input name="teams[<?php echo (int) $t->id; ?>][nevobo_team_type]" value="<?php echo esc_attr( $t->nevobo_team_type ?? '' ); ?>" class="regular-text" /></td>
-							<td><input name="teams[<?php echo (int) $t->id; ?>][nevobo_number]" type="number" min="1" value="<?php echo (int) ( $t->nevobo_number ?? 1 ); ?>" style="width:3.5rem" /></td>
 							<td><input name="teams[<?php echo (int) $t->id; ?>][trainings_per_week]" type="number" min="0" value="<?php echo (int) $t->trainings_per_week; ?>" style="width:3.5rem" /></td>
 							<td><input name="teams[<?php echo (int) $t->id; ?>][min_training_minutes]" type="number" min="1" value="<?php echo (int) ( $t->min_training_minutes ?? 90 ); ?>" style="width:4rem" /></td>
 							<td><input name="teams[<?php echo (int) $t->id; ?>][max_training_minutes]" type="number" min="1" value="<?php echo (int) ( $t->max_training_minutes ?? 90 ); ?>" style="width:4rem" /></td>
@@ -797,7 +794,6 @@ class VTC_TP_Admin {
 				<input type="hidden" name="vtc_tp_action" value="add_team" />
 				<input name="display_name" placeholder="<?php esc_attr_e( 'Weergavenaam', 'vtc-training-planner' ); ?>" required class="regular-text" />
 				<input name="nevobo_team_type" placeholder="<?php esc_attr_e( 'Nevobo type', 'vtc-training-planner' ); ?>" class="regular-text" />
-				<input name="nevobo_number" type="number" min="1" value="1" style="width:3.5rem" title="<?php esc_attr_e( 'Nummer', 'vtc-training-planner' ); ?>" />
 				<input name="trainings_per_week" type="number" min="0" value="2" style="width:3.5rem" title="<?php esc_attr_e( 'Trainings per week', 'vtc-training-planner' ); ?>" />
 				<input name="min_training_minutes" type="number" min="1" value="90" style="width:4rem" />
 				<input name="max_training_minutes" type="number" min="1" value="90" style="width:4rem" />

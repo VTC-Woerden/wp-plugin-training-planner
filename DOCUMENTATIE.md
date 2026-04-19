@@ -31,7 +31,7 @@ Onder **Training**:
 ## Stamdata (kort)
 
 - **Vereniging**: o.a. clubnaam en **Nevobo clubcode** (klein, zonder spaties; gebruikt voor `programma.rss`).
-- **Teams**: weergavenaam, Nevobo team-type/nummer, trainings per week, min/max minuten, sorteervolgorde.
+- **Teams**: weergavenaam, Nevobo team-type, trainings per week, min/max minuten, sorteervolgorde.
 - **Locaties en velden**: per locatie meerdere velden; type zaal/buiten; optionele Nevobo-zaal- of veld-slug voor koppeling met wedstrijdfeed.
 
 Knoppen voor **voorbeeld laden** en **teams uit Team-app** vullen stamdata vanuit vaste/snapshot-logica (alleen nuttig binnen VTC-omgeving).
