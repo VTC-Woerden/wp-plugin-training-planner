@@ -19,7 +19,7 @@ Onder **Training**:
 | Pagina | Doel |
 |--------|------|
 | **Instellingen** | Nevobo RSS-cache (seconden), scope wedstrijden in weekoverzicht. Clubcode staat bij Stamdata. |
-| **Blauwdrukken** | Meerdere blauwdrukken (basis, afwijkende weken-patroon); koppeling aan stamdata per blauwdruk. |
+| **Blauwdrukken** | Blauwdruk- en **versielabels** wijzigen, afwijkende blauwdruk **verwijderen** (incl. stamdata/rooster), ISO-weken toewijzen. |
 | **Stamdata** | Vereniging (`vtc_tp_club`), teams, locaties en velden (venues). Zelfde denkmodel als de Team-app. |
 | **Rooster (visueel)** | Drag-and-drop planner (blauwdruk of gekozen ISO-week), conceptversies, publiceren. |
 | **Rooster (lijst)** | Lijstweergave van het rooster. |
@@ -128,6 +128,7 @@ Alle routes vereisen ingelogde gebruiker met `manage_options`. Basis-URL: `/wp-j
 | GET | `planner-week?iso_week=YYYY-Www` | Plannerdata voor specifieke week; query o.a. `blueprint_id` |
 | GET / POST | `blueprints` | Lijst blauwdrukken / aanmaken (o.a. afwijkende blauwdruk) |
 | POST | `blueprint-versions` | Nieuwe conceptversie vanaf live |
+| PATCH | `blueprint-versions/{id}` | JSON `label`: versienaam wijzigen |
 | POST | `blueprint-editing-version` | Actieve bewerkversie zetten |
 | POST | `deviation-weeks` | Afwijkende week (zelfde blauwdruk) aanmaken |
 | DELETE | `deviation-weeks/{id}` | Afwijkende week verwijderen |

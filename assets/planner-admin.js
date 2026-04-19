@@ -43,6 +43,25 @@
 	var SCHEDULE_VIEW_KEY = 'vtcTpScheduleView';
 	var ISO_WEEK_KEY = 'vtcTpIsoWeek';
 	var BLUEPRINT_ID_KEY = 'vtcTpBlueprintId';
+	var VIEW_PUBLISHED_KEY = 'vtcTpViewPublished';
+
+	function setViewPublishedPref(on) {
+		try {
+			if (on) {
+				sessionStorage.setItem(VIEW_PUBLISHED_KEY, '1');
+			} else {
+				sessionStorage.removeItem(VIEW_PUBLISHED_KEY);
+			}
+		} catch (eVp) { /* ignore */ }
+	}
+
+	function wantViewPublished() {
+		try {
+			return sessionStorage.getItem(VIEW_PUBLISHED_KEY) === '1';
+		} catch (eVp2) {
+			return false;
+		}
+	}
 
 	var TEAM_COLORS = [
 		'#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
@@ -129,8 +148,15 @@
 		}
 		var path = 'admin/planner';
 		var bid = state.blueprintId || cfg.baseBlueprintId || 0;
+		var q = [];
 		if (bid) {
-			path += '?blueprint_id=' + encodeURIComponent(String(bid));
+			q.push('blueprint_id=' + encodeURIComponent(String(bid)));
+		}
+		if (wantViewPublished()) {
+			q.push('view=published');
+		}
+		if (q.length) {
+			path += '?' + q.join('&');
 		}
 		return api(path);
 	}
@@ -140,6 +166,17 @@
 		state.data = data;
 		state.lastLoadError = null;
 		// Alleen in blauwdruk-modus server-blauwdruk overnemen; weekweergave toont effectieve BP en mag je keuze voor het blauwdruk-tabblad niet overschrijven.
+		if (data.planner_scope === 'blueprint') {
+			if (typeof data.viewing_published === 'undefined') {
+				data.viewing_published = false;
+			}
+			if (wantViewPublished() && !data.viewing_published) {
+				setViewPublishedPref(false);
+				if (!data.published_version_id) {
+					showToast(__('noPublishedVersion'), false);
+				}
+			}
+		}
 		if (data.planner_scope === 'blueprint' && data.blueprint_id) {
 			state.blueprintId = data.blueprint_id;
 			persistBlueprintId(data.blueprint_id);
@@ -241,6 +278,7 @@
 			sessionStorage.setItem(SCHEDULE_VIEW_KEY, v);
 		} catch (e) { /* ignore */ }
 		if (v === 'week') {
+			setViewPublishedPref(false);
 			state.workMode = 'teams';
 			try {
 				sessionStorage.setItem(WORK_MODE_KEY, 'teams');
@@ -464,6 +502,7 @@
 
 	function placeTeamAtPickerSlot(teamId) {
 		if (!state.data) return;
+		if (state.data.planner_scope === 'blueprint' && state.data.viewing_published) return;
 		if (isWeekScope() && !state.data.has_exception && !state.data.uses_deviation_blueprint) return;
 		var team = findTeam(teamId);
 		var tid = allocSlotTempId();
@@ -506,6 +545,7 @@
 		var weekScope = isWeekScope();
 		var weekReadonly = weekScope && !state.data.has_exception && !state.data.uses_deviation_blueprint;
 		if (weekReadonly) return;
+		if (state.data.viewing_published) return;
 		var place = computePlacementFromPoint(e.currentTarget, e.clientX);
 		state.teamPickerVenueId = place.venue_id;
 		state.teamPickerDow = place.day_of_week;
@@ -647,12 +687,13 @@
 		var reloadBtn = document.getElementById('vtc-tppl-reload');
 		var banner = document.getElementById('vtc-tppl-dirty-banner');
 		if (wrap) wrap.classList.toggle('vtc-tppl--dirty', state.localDirty);
+		var pubView = !!(state.data && state.data.planner_scope === 'blueprint' && state.data.viewing_published);
 		if (saveBtn) {
-			saveBtn.disabled = !state.localDirty || state.saving;
+			saveBtn.disabled = !state.localDirty || state.saving || pubView;
 			saveBtn.textContent = state.saving ? __('saving') : __('saveDraft');
 		}
 		if (pubBtn) {
-			pubBtn.disabled = state.saving;
+			pubBtn.disabled = state.saving || pubView;
 			var hidePub = isWeekScope() && !(state.data && state.data.uses_deviation_blueprint && !state.data.has_exception);
 			pubBtn.style.display = hidePub ? 'none' : '';
 		}
@@ -980,10 +1021,12 @@
 		var inhuur = state.workMode === 'inhuur' && !weekScope;
 		var hasTeams = d.teams && d.teams.length > 0;
 		var weekReadonly = weekScope && !d.has_exception && !d.uses_deviation_blueprint;
+		var publishedView = !weekScope && !!d.viewing_published;
+		var gridReadonly = weekReadonly || publishedView;
 		var iwForInput = normalizeIsoWeekStr(d.iso_week || state.isoWeek) || state.isoWeek;
 
 		var html = '';
-		html += '<div class="vtc-tppl' + (inhuur ? ' vtc-tppl--inhuur' : '') + (weekScope ? ' vtc-tppl--week-scope' : '') + '">';
+		html += '<div class="vtc-tppl' + (inhuur ? ' vtc-tppl--inhuur' : '') + (weekScope ? ' vtc-tppl--week-scope' : '') + (publishedView ? ' vtc-tppl--viewing-published' : '') + '">';
 		html += '<div class="vtc-tppl-toolbar">';
 		html += '<div class="vtc-tppl-toolbar-row vtc-tppl-toolbar-row--main">';
 		html += '<h2>' + esc(weekScope ? (String(__('viewWeek')) + ': ' + (d.iso_week || state.isoWeek)) : String(__('viewBlueprint'))) + '</h2>';
@@ -1044,17 +1087,21 @@
 			var activeVid = d.editing_version_id || d.published_version_id;
 			html += '<div class="vtc-tppl-toolbar-row vtc-tppl-version-bar">';
 			html += '<label class="vtc-tppl-version-field"><span>' + esc(__('versionLabel')) + '</span> ';
-			html += '<select id="vtc-tppl-version-select">';
+			html += '<select id="vtc-tppl-version-select"' + (publishedView ? ' disabled' : '') + '>';
 			d.versions.forEach(function (v) {
 				var sel = Number(v.id) === Number(activeVid) ? ' selected' : '';
 				var lab = (v.label || ('#' + v.id)) + (v.is_published ? ' ' + __('versionLive') : '');
 				html += '<option value="' + esc(String(v.id)) + '"' + sel + '>' + esc(lab) + '</option>';
 			});
 			html += '</select></label> ';
-			html += '<button type="button" class="button" id="vtc-tppl-new-version">' + esc(__('newConceptVersion')) + '</button>';
+			html += '<button type="button" class="button" id="vtc-tppl-new-version"' + (publishedView ? ' disabled' : '') + '>' + esc(__('newConceptVersion')) + '</button>';
+			html += ' <button type="button" class="button" id="vtc-tppl-toggle-published"' + (!d.published_version_id ? ' disabled' : '') + '>' + esc(publishedView ? __('backToDraftView') : __('viewPublishedBlueprint')) + '</button>';
 			html += '</div>';
 		}
-		if (!weekScope && d.draft_differs) {
+		if (!weekScope && publishedView) {
+			html += '<p class="vtc-tppl-published-banner">' + esc(__('viewingPublishedBanner')) + '</p>';
+		}
+		if (!weekScope && d.draft_differs && !publishedView) {
 			html += '<p class="vtc-tppl-draft-banner">' + esc(__('draftHint')) + '</p>';
 		}
 		if (weekScope && d.uses_deviation_blueprint && !d.has_exception && d.draft_differs) {
@@ -1073,7 +1120,7 @@
 			html += '<p class="vtc-tppl-inhuur-banner">' + esc(__('inhuurBanner')) + '</p>';
 			html += '<p class="vtc-tppl-help">' + esc(__('inhuurHelp')) + '</p>';
 		} else if (!weekScope) {
-			html += '<p class="vtc-tppl-help">' + esc(__('helpDrag')) + '</p>';
+			html += '<p class="vtc-tppl-help">' + esc(publishedView ? __('helpPublishedView') : __('helpDrag')) + '</p>';
 		}
 
 		html += '<div class="vtc-tppl-layout">';
@@ -1084,11 +1131,12 @@
 		} else {
 			html += '<h3>Teams</h3>';
 			if (hasTeams) {
-				if (!weekReadonly) {
+				if (!gridReadonly) {
 					html += '<p class="vtc-tppl-sidebar-hint vtc-tppl-sidebar-hint--overview">' + esc(__('teamOverviewLaneHelp')) + '</p>';
 				}
 				d.teams.forEach(function (t) {
-					html += '<button type="button" class="vtc-tppl-team-chip" draggable="true" data-team-id="' + t.id + '" style="border-left:4px solid ' + teamColor(t.id) + '">' + esc(t.display_name) + '</button>';
+					var dragAttr = gridReadonly ? '' : ' draggable="true"';
+					html += '<button type="button" class="vtc-tppl-team-chip"' + dragAttr + ' data-team-id="' + t.id + '" style="border-left:4px solid ' + teamColor(t.id) + '">' + esc(t.display_name) + '</button>';
 				});
 			} else {
 				html += '<p class="vtc-tppl-sidebar-hint">' + esc(__('noTeamsSidebar')) + '</p>';
@@ -1114,7 +1162,7 @@
 				(d.unavailability || []).forEach(function (u) {
 					if (u.day_of_week !== dow || u.venue_id !== v.id) return;
 					var usel = u.id === state.selectedUnavailId ? ' is-selected' : '';
-					var unavailEditable = inhuur && !weekScope;
+					var unavailEditable = inhuur && !weekScope && !publishedView;
 					var unRo = !unavailEditable ? ' vtc-tppl-unavail--readonly' : '';
 					html += '<div class="vtc-tppl-unavail' + usel + unRo + '" data-unavail-id="' + u.id + '" style="left:' + slotStyleLeftPct(u.start_time) + '%;width:' + slotStyleWidthPct(u.start_time, u.end_time) + '%">';
 					html += '<div class="vtc-tppl-unavail-handle vtc-tppl-unavail-handle--left" data-unavail-id="' + u.id + '"></div>';
@@ -1129,16 +1177,16 @@
 					var slotList = weekReadonly ? (d.baseline_slots || []) : (d.slots || []);
 					slotList.forEach(function (s) {
 						if (s.day_of_week !== dow || s.venue_id !== v.id) return;
-						var sel = !weekReadonly && state.selectedSlotIds.has(s.id) ? ' is-selected' : '';
-						var baseCls = weekReadonly ? ' vtc-tppl-block--baseline' : '';
+						var sel = !gridReadonly && state.selectedSlotIds.has(s.id) ? ' is-selected' : '';
+						var baseCls = gridReadonly ? ' vtc-tppl-block--baseline' : '';
 						html += '<div class="vtc-tppl-block' + baseCls + sel + '" data-slot-id="' + s.id + '" style="left:' + slotStyleLeftPct(s.start_time) + '%;width:' + slotStyleWidthPct(s.start_time, s.end_time) + '%;background:' + teamColor(s.team_id) + '">';
-						if (!weekReadonly) {
+						if (!gridReadonly) {
 							html += '<div class="vtc-tppl-block-resize vtc-tppl-block-resize--left" data-slot-id="' + s.id + '"></div>';
 							html += '<button type="button" class="vtc-tppl-block-x" data-slot-id="' + s.id + '" title="Verwijderen">&times;</button>';
 						}
 						html += '<span class="vtc-tppl-block-title">' + esc(s.team_name) + '</span>';
 						html += '<span class="vtc-tppl-block-time">' + esc(s.start_time + '–' + s.end_time) + '</span>';
-						if (!weekReadonly) {
+						if (!gridReadonly) {
 							html += '<div class="vtc-tppl-block-resize vtc-tppl-block-resize--right" data-slot-id="' + s.id + '"></div>';
 						}
 						html += '</div>';
@@ -1149,7 +1197,7 @@
 			html += '</div></div></div>';
 		}
 		html += '</div></div></div></div>';
-		html += buildTeamPickerPopHtml(weekReadonly, inhuur, hasTeams);
+		html += buildTeamPickerPopHtml(gridReadonly, inhuur, hasTeams);
 
 		root.innerHTML = html;
 		bind();
@@ -1238,6 +1286,21 @@
 			});
 		}
 
+		var togglePubBtn = document.getElementById('vtc-tppl-toggle-published');
+		if (togglePubBtn && state.data) {
+			togglePubBtn.addEventListener('click', function () {
+				if (!state.data.published_version_id) {
+					showToast(__('noPublishedVersion'), false);
+					return;
+				}
+				if (!confirmDiscardIfDirty()) return;
+				setViewPublishedPref(!wantViewPublished());
+				resetPending();
+				state.localDirty = false;
+				loadPlanner({ force: true, initial: true });
+			});
+		}
+
 		document.querySelectorAll('.vtc-tppl-view-btn').forEach(function (btn) {
 			btn.addEventListener('click', function () {
 				setScheduleView(btn.getAttribute('data-schedule-view'));
@@ -1268,6 +1331,8 @@
 
 		var weekScope = isWeekScope();
 		var weekReadonly = weekScope && !state.data.has_exception && !state.data.uses_deviation_blueprint;
+		var publishedView = !weekScope && !!state.data.viewing_published;
+		var gridReadonly = weekReadonly || publishedView;
 		var inhuur = state.workMode === 'inhuur' && !weekScope;
 
 		var isoWeekInput = document.getElementById('vtc-tppl-iso-week-input');
@@ -1331,7 +1396,7 @@
 			});
 		}
 
-		if (!inhuur && state.data.teams && state.data.teams.length) {
+		if (!inhuur && state.data.teams && state.data.teams.length && !gridReadonly) {
 			root.querySelectorAll('.vtc-tppl-team-chip').forEach(function (chip) {
 				chip.addEventListener('dragstart', function (e) {
 					e.dataTransfer.setData('text/plain', String(chip.getAttribute('data-team-id')));
@@ -1341,9 +1406,9 @@
 		}
 
 		root.querySelectorAll('.vtc-tppl-lane-body').forEach(function (body) {
-			if (inhuur) {
+			if (inhuur && !publishedView) {
 				body.addEventListener('pointerdown', onInhuurPaintDown);
-			} else if (!weekReadonly) {
+			} else if (!gridReadonly) {
 				body.addEventListener('dragover', function (e) {
 					e.preventDefault();
 					e.dataTransfer.dropEffect = 'copy';
@@ -1404,7 +1469,7 @@
 			});
 		}
 
-		if (!weekScope && inhuur) {
+		if (!weekScope && inhuur && !publishedView) {
 			root.querySelectorAll('.vtc-tppl-unavail').forEach(function (el) {
 				el.addEventListener('pointerdown', onUnavailPointerDown);
 				el.addEventListener('dblclick', onUnavailDblClick);
@@ -1452,6 +1517,7 @@
 			return;
 		}
 		if ((e.key === 'Delete' || e.key === 'Backspace') && state.workMode === 'teams' && state.selectedSlotIds.size > 0) {
+			if (state.data && state.data.planner_scope === 'blueprint' && state.data.viewing_published) return;
 			e.preventDefault();
 			var toDel = Array.from(state.selectedSlotIds);
 			toDel.forEach(function (sid) {
@@ -2034,6 +2100,7 @@
 
 	function onDropTeam(e) {
 		e.preventDefault();
+		if (state.data && state.data.planner_scope === 'blueprint' && state.data.viewing_published) return;
 		if (isWeekScope() && !state.data.has_exception && !state.data.uses_deviation_blueprint) return;
 		var body = e.currentTarget;
 		body.classList.remove('is-drop-target');
@@ -2058,6 +2125,7 @@
 
 	function deleteSlot(id, opts) {
 		opts = opts || {};
+		if (state.data && state.data.planner_scope === 'blueprint' && state.data.viewing_published) return;
 		if (isWeekScope() && !state.data.has_exception && !state.data.uses_deviation_blueprint) return;
 		state.selectedSlotIds.delete(id);
 		if (state.selectedSlotIds.size === 0) {
@@ -2079,6 +2147,7 @@
 	}
 
 	function onPublish() {
+		if (state.data && state.data.planner_scope === 'blueprint' && state.data.viewing_published) return;
 		if (isWeekScope() && !(state.data && state.data.uses_deviation_blueprint && !state.data.has_exception)) return;
 		var msg = state.localDirty ? __('publishSaveFirst') : __('publishConfirm');
 		if (!window.confirm(msg)) return;

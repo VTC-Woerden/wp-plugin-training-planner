@@ -200,6 +200,87 @@ class VTC_TP_DB {
 	}
 
 	/**
+	 * Wijzigt de weergavenaam van een blauwdruk (basis of afwijkend).
+	 *
+	 * @param int    $blueprint_id Blauwdruk-id.
+	 * @param string $name         Nieuwe naam (niet leeg na trim).
+	 * @return bool
+	 */
+	public function update_blueprint_name( $blueprint_id, $name ) {
+		$blueprint_id = (int) $blueprint_id;
+		$name         = sanitize_text_field( $name );
+		if ( $blueprint_id < 1 || '' === $name ) {
+			return false;
+		}
+		if ( ! $this->get_blueprint( $blueprint_id ) ) {
+			return false;
+		}
+		global $wpdb;
+		$p  = $wpdb->prefix;
+		$res = $wpdb->update(
+			"{$p}vtc_tp_blueprint",
+			array( 'name' => $name ),
+			array( 'id' => $blueprint_id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+		return false !== $res;
+	}
+
+	/**
+	 * Verwijdert een afwijkende blauwdruk en alle gekoppelde data. De basis-blauwdruk kan niet worden verwijderd.
+	 *
+	 * @param int $blueprint_id Alleen kind = afwijkend.
+	 * @return bool|string False bij mislukken; true bij succes.
+	 */
+	public function delete_deviation_blueprint_and_data( $blueprint_id ) {
+		$blueprint_id = (int) $blueprint_id;
+		if ( $blueprint_id < 1 ) {
+			return false;
+		}
+		$bp = $this->get_blueprint( $blueprint_id );
+		if ( ! $bp || (int) $bp->kind === self::KIND_BASE ) {
+			return false;
+		}
+		global $wpdb;
+		$p = $wpdb->prefix;
+
+		$wpdb->delete( "{$p}vtc_tp_deviation_week", array( 'deviation_blueprint_id' => $blueprint_id ), array( '%d' ) );
+
+		$vids = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$p}vtc_tp_blueprint_version WHERE blueprint_id = %d", $blueprint_id ) );
+		foreach ( $vids as $vid ) {
+			$vid = (int) $vid;
+			$wpdb->delete( "{$p}vtc_tp_slot_draft", array( 'blueprint_version_id' => $vid ), array( '%d' ) );
+			$wpdb->delete( "{$p}vtc_tp_slot_published", array( 'blueprint_version_id' => $vid ), array( '%d' ) );
+		}
+		$wpdb->delete( "{$p}vtc_tp_slot_draft", array( 'blueprint_id' => $blueprint_id ), array( '%d' ) );
+		$wpdb->delete( "{$p}vtc_tp_slot_published", array( 'blueprint_id' => $blueprint_id ), array( '%d' ) );
+		$wpdb->delete( "{$p}vtc_tp_blueprint_version", array( 'blueprint_id' => $blueprint_id ), array( '%d' ) );
+
+		$ew_ids = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$p}vtc_tp_exception_week WHERE blueprint_id = %d", $blueprint_id ) );
+		foreach ( $ew_ids as $ewid ) {
+			$wpdb->delete( "{$p}vtc_tp_exception_slot", array( 'exception_week_id' => (int) $ewid ), array( '%d' ) );
+		}
+		$wpdb->delete( "{$p}vtc_tp_exception_week", array( 'blueprint_id' => $blueprint_id ), array( '%d' ) );
+
+		$wpdb->delete( "{$p}vtc_tp_team", array( 'blueprint_id' => $blueprint_id ), array( '%d' ) );
+
+		$loc_ids = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$p}vtc_tp_location WHERE blueprint_id = %d", $blueprint_id ) );
+		foreach ( $loc_ids as $lid ) {
+			$lid = (int) $lid;
+			$venue_ids = $wpdb->get_col( $wpdb->prepare( "SELECT id FROM {$p}vtc_tp_venue WHERE location_id = %d", $lid ) );
+			foreach ( $venue_ids as $vid2 ) {
+				$vid2 = (int) $vid2;
+				$wpdb->delete( "{$p}vtc_tp_venue_unavail", array( 'venue_id' => $vid2 ), array( '%d' ) );
+				$wpdb->delete( "{$p}vtc_tp_venue", array( 'id' => $vid2 ), array( '%d' ) );
+			}
+			$wpdb->delete( "{$p}vtc_tp_location", array( 'id' => $lid ), array( '%d' ) );
+		}
+
+		return false !== $wpdb->delete( "{$p}vtc_tp_blueprint", array( 'id' => $blueprint_id ), array( '%d' ) );
+	}
+
+	/**
 	 * @return int|null
 	 */
 	public function get_published_version_id_for_blueprint( $blueprint_id ) {
@@ -266,6 +347,35 @@ class VTC_TP_DB {
 				(int) $blueprint_id
 			)
 		);
+	}
+
+	/**
+	 * Wijzigt het label van een blauwdrukversie (concept of live).
+	 *
+	 * @param int    $version_id Versie-id.
+	 * @param string $label      Nieuw label (niet leeg na trim).
+	 * @return bool False bij ongeldige invoer of SQL-fout.
+	 */
+	public function update_blueprint_version_label( $version_id, $label ) {
+		$version_id = (int) $version_id;
+		$label      = sanitize_text_field( $label );
+		if ( $version_id < 1 || '' === $label ) {
+			return false;
+		}
+		global $wpdb;
+		$p      = $wpdb->prefix;
+		$exists = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(1) FROM {$p}vtc_tp_blueprint_version WHERE id = %d", $version_id ) );
+		if ( ! $exists ) {
+			return false;
+		}
+		$res = $wpdb->update(
+			"{$p}vtc_tp_blueprint_version",
+			array( 'label' => $label ),
+			array( 'id' => $version_id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+		return false !== $res;
 	}
 
 	/**

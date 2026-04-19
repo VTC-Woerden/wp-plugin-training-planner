@@ -32,6 +32,10 @@ class VTC_TP_Rest_Admin {
 						'required' => false,
 						'type'     => 'integer',
 					),
+					'view'         => array(
+						'required' => false,
+						'type'     => 'string',
+					),
 				),
 			)
 		);
@@ -180,6 +184,17 @@ class VTC_TP_Rest_Admin {
 		);
 		register_rest_route(
 			'vtc-tp/v1',
+			'/admin/blueprint-versions/(?P<id>\d+)',
+			array(
+				array(
+					'methods'             => 'PATCH',
+					'callback'            => array( $this, 'patch_blueprint_version_rest' ),
+					'permission_callback' => array( $this, 'can_manage' ),
+				),
+			)
+		);
+		register_rest_route(
+			'vtc-tp/v1',
 			'/admin/blueprint-editing-version',
 			array(
 				'methods'             => 'POST',
@@ -269,7 +284,19 @@ class VTC_TP_Rest_Admin {
 		}
 		$teams  = $this->db->get_teams( $bp );
 		$venues = $this->db->get_venues_for_blueprint( $bp );
-		$slots  = $this->db->get_slots_draft( $bp );
+		$want_published    = ( 'published' === strtolower( (string) $req->get_param( 'view' ) ) );
+		$viewing_published = false;
+		if ( $want_published ) {
+			$pub_vid = $this->db->get_published_version_id_for_blueprint( $bp );
+			if ( $pub_vid ) {
+				$viewing_published = true;
+				$slots             = $this->db->get_slots_published( $bp, (int) $pub_vid );
+			} else {
+				$slots = $this->db->get_slots_draft( $bp );
+			}
+		} else {
+			$slots = $this->db->get_slots_draft( $bp );
+		}
 
 		$team_names = array();
 		foreach ( $teams as $t ) {
@@ -353,6 +380,7 @@ class VTC_TP_Rest_Admin {
 				'slots'                   => $out_slots,
 				'unavailability'          => $out_un,
 				'draft_differs'           => $this->db->draft_differs_from_published( $bp ),
+				'viewing_published'       => $viewing_published,
 			)
 		);
 	}
@@ -912,6 +940,25 @@ class VTC_TP_Rest_Admin {
 			return new WP_Error( 'version_fail', __( 'Conceptversie kon niet worden aangemaakt.', 'vtc-training-planner' ), array( 'status' => 400 ) );
 		}
 		return rest_ensure_response( array( 'version_id' => (int) $vid ) );
+	}
+
+	public function patch_blueprint_version_rest( WP_REST_Request $req ) {
+		$vid = (int) $req['id'];
+		if ( $vid < 1 ) {
+			return new WP_Error( 'bad_id', __( 'Ongeldige versie.', 'vtc-training-planner' ), array( 'status' => 400 ) );
+		}
+		$params = $req->get_json_params();
+		if ( ! is_array( $params ) ) {
+			$params = array();
+		}
+		$label = isset( $params['label'] ) ? sanitize_text_field( (string) $params['label'] ) : '';
+		if ( '' === $label ) {
+			return new WP_Error( 'bad_label', __( 'Label mag niet leeg zijn.', 'vtc-training-planner' ), array( 'status' => 400 ) );
+		}
+		if ( ! $this->db->update_blueprint_version_label( $vid, $label ) ) {
+			return new WP_Error( 'not_found', __( 'Versie niet gevonden of opslaan mislukt.', 'vtc-training-planner' ), array( 'status' => 404 ) );
+		}
+		return rest_ensure_response( array( 'ok' => true, 'id' => $vid, 'label' => $label ) );
 	}
 
 	public function set_editing_version_rest( WP_REST_Request $req ) {

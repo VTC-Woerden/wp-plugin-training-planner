@@ -119,6 +119,11 @@ class VTC_TP_Admin {
 						'newConceptVersionPrompt' => __( 'Label voor de nieuwe conceptversie (optioneel):', 'vtc-training-planner' ),
 						'versionSwitchErr' => __( 'Versie wisselen mislukt.', 'vtc-training-planner' ),
 						'versionCreated' => __( 'Conceptversie aangemaakt.', 'vtc-training-planner' ),
+						'viewPublishedBlueprint' => __( 'Gepubliceerd rooster tonen', 'vtc-training-planner' ),
+						'backToDraftView' => __( 'Terug naar concept', 'vtc-training-planner' ),
+						'viewingPublishedBanner' => __( 'Je bekijkt het gepubliceerde live rooster (alleen-lezen). Klik op “Terug naar concept” om verder te bewerken.', 'vtc-training-planner' ),
+						'noPublishedVersion' => __( 'Er is nog geen gepubliceerde versie voor deze blauwdruk.', 'vtc-training-planner' ),
+						'helpPublishedView' => __( 'Dit is een alleen-lezen weergave van het live rooster op de site.', 'vtc-training-planner' ),
 						'teamOverviewTitle' => __( 'Team kiezen', 'vtc-training-planner' ),
 						'teamOverviewHint' => __( 'Gebaseerd op “trainings per week” uit stamdata en het aantal geplande trainingen in dit overzicht.', 'vtc-training-planner' ),
 						'teamOverviewShowAll' => __( 'Toon alle teams', 'vtc-training-planner' ),
@@ -558,6 +563,64 @@ class VTC_TP_Admin {
 				}
 				break;
 
+			case 'save_blueprint_names':
+				$rows = isset( $_POST['blueprint_names'] ) && is_array( $_POST['blueprint_names'] ) ? wp_unslash( $_POST['blueprint_names'] ) : array();
+				$ok   = 0;
+				foreach ( $rows as $bid => $name ) {
+					$bid = absint( $bid );
+					if ( $bid < 1 ) {
+						continue;
+					}
+					if ( ! $this->db->get_blueprint( $bid ) ) {
+						continue;
+					}
+					$name = sanitize_text_field( is_string( $name ) ? $name : '' );
+					if ( '' === $name ) {
+						continue;
+					}
+					if ( $this->db->update_blueprint_name( $bid, $name ) ) {
+						++$ok;
+					}
+				}
+				if ( $ok > 0 ) {
+					add_settings_error( 'vtc_tp', 'bp_names', __( 'Blauwdruknamen opgeslagen.', 'vtc-training-planner' ), 'success' );
+				}
+				break;
+
+			case 'save_version_labels':
+				$rows = isset( $_POST['version_labels'] ) && is_array( $_POST['version_labels'] ) ? wp_unslash( $_POST['version_labels'] ) : array();
+				$ok   = 0;
+				foreach ( $rows as $vid => $label ) {
+					$vid = absint( $vid );
+					if ( $vid < 1 ) {
+						continue;
+					}
+					$label = sanitize_text_field( is_string( $label ) ? $label : '' );
+					if ( '' === $label ) {
+						continue;
+					}
+					if ( $this->db->update_blueprint_version_label( $vid, $label ) ) {
+						++$ok;
+					}
+				}
+				if ( $ok > 0 ) {
+					add_settings_error( 'vtc_tp', 'ver_labels', __( 'Versielabels opgeslagen.', 'vtc-training-planner' ), 'success' );
+				}
+				break;
+
+			case 'delete_deviation_blueprint':
+				$del_id = absint( $_POST['blueprint_id_delete'] ?? 0 );
+				if ( $del_id < 1 ) {
+					add_settings_error( 'vtc_tp', 'bp_del', __( 'Ongeldige blauwdruk.', 'vtc-training-planner' ), 'error' );
+					break;
+				}
+				if ( $this->db->delete_deviation_blueprint_and_data( $del_id ) ) {
+					add_settings_error( 'vtc_tp', 'bp_del', __( 'Afwijkende blauwdruk en alle bijbehorende stamdata, rooster en toewijzingen zijn verwijderd.', 'vtc-training-planner' ), 'success' );
+				} else {
+					add_settings_error( 'vtc_tp', 'bp_del', __( 'Blauwdruk verwijderen mislukt (alleen afwijkende blauwdrukken kunnen worden verwijderd).', 'vtc-training-planner' ), 'error' );
+				}
+				break;
+
 			case 'add_deviation_week_admin':
 				$dw_bp = absint( $_POST['deviation_blueprint_id'] ?? 0 );
 				$iw    = VTC_TP_Schedule::normalize_iso_week( wp_unslash( $_POST['iso_week'] ?? '' ) );
@@ -598,22 +661,82 @@ class VTC_TP_Admin {
 		$bps   = $this->db->list_blueprints();
 		$dweek = $this->db->list_all_deviation_weeks();
 		$base  = $this->db->get_base_blueprint_id();
+		$bp_names_form_id = 'vtc-tp-blueprint-names';
 		?>
 		<div class="wrap vtc-tp-wrap">
 			<h1><?php esc_html_e( 'Blauwdrukken', 'vtc-training-planner' ); ?></h1>
-			<p class="description"><?php esc_html_e( 'Er is één basis-blauwdruk (kind “basis”). Afwijkende blauwdrukken hebben eigen stamdata en rooster; per gepubliceerde versie één live patroon. Wijs ISO-weken toe — die overrulen de basis in het weekoverzicht.', 'vtc-training-planner' ); ?></p>
+			<p class="description"><?php esc_html_e( 'Er is één basis-blauwdruk (kind “basis”). Afwijkende blauwdrukken hebben eigen stamdata en rooster; per gepubliceerde versie één live patroon. Wijs ISO-weken toe — die overrulen de basis in het weekoverzicht. Je kunt namen wijzigen; alleen afwijkende blauwdrukken kun je verwijderen (met alle bijbehorende data).', 'vtc-training-planner' ); ?></p>
 
 			<h2><?php esc_html_e( 'Blauwdrukken', 'vtc-training-planner' ); ?></h2>
-			<table class="widefat striped"><thead><tr><th><?php esc_html_e( 'Naam', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Type', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Stamdata / rooster', 'vtc-training-planner' ); ?></th></tr></thead><tbody>
+			<form method="post" id="<?php echo esc_attr( $bp_names_form_id ); ?>" class="vtc-tp-blueprint-names-form">
+				<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
+				<input type="hidden" name="vtc_tp_action" value="save_blueprint_names" />
+			</form>
+			<table class="widefat striped"><thead><tr><th><?php esc_html_e( 'Naam', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Type', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Stamdata / rooster', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Acties', 'vtc-training-planner' ); ?></th></tr></thead><tbody>
 			<?php foreach ( $bps as $b ) : ?>
 				<tr>
-					<td><?php echo esc_html( $b->name ); ?></td>
+					<td>
+						<label class="screen-reader-text" for="bp-name-<?php echo (int) $b->id; ?>"><?php esc_html_e( 'Naam blauwdruk', 'vtc-training-planner' ); ?></label>
+						<input form="<?php echo esc_attr( $bp_names_form_id ); ?>" id="bp-name-<?php echo (int) $b->id; ?>" class="regular-text" name="blueprint_names[<?php echo (int) $b->id; ?>]" value="<?php echo esc_attr( $b->name ); ?>" required />
+					</td>
 					<td><?php echo (int) $b->kind === VTC_TP_DB::KIND_DEVIATION ? esc_html__( 'Afwijkend', 'vtc-training-planner' ) : esc_html__( 'Basis', 'vtc-training-planner' ); ?></td>
 					<td><a href="<?php echo esc_url( admin_url( 'admin.php?page=vtc-training-stamdata&blueprint_id=' . (int) $b->id ) ); ?>"><?php esc_html_e( 'Stamdata', 'vtc-training-planner' ); ?></a>
 						· <a href="<?php echo esc_url( admin_url( 'admin.php?page=vtc-training-planner-visual' ) ); ?>#bp=<?php echo (int) $b->id; ?>"><?php esc_html_e( 'Rooster (visueel)', 'vtc-training-planner' ); ?></a></td>
+					<td>
+						<?php if ( (int) $b->kind === VTC_TP_DB::KIND_DEVIATION ) : ?>
+							<form method="post" class="vtc-tp-inline-delete" onsubmit="return confirm('<?php echo esc_js( __( 'Deze afwijkende blauwdruk en alle stamdata, roosters en weektoewijzingen permanent verwijderen?', 'vtc-training-planner' ) ); ?>');">
+								<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
+								<input type="hidden" name="vtc_tp_action" value="delete_deviation_blueprint" />
+								<input type="hidden" name="blueprint_id_delete" value="<?php echo (int) $b->id; ?>" />
+								<button type="submit" class="button button-link-delete"><?php esc_html_e( 'Verwijderen', 'vtc-training-planner' ); ?></button>
+							</form>
+						<?php else : ?>
+							<span class="description">—</span>
+						<?php endif; ?>
+					</td>
 				</tr>
 			<?php endforeach; ?>
 			</tbody></table>
+			<p><button type="submit" class="button button-primary" form="<?php echo esc_attr( $bp_names_form_id ); ?>"><?php esc_html_e( 'Namen opslaan', 'vtc-training-planner' ); ?></button></p>
+
+			<?php
+			$ver_labels_form_id = 'vtc-tp-version-labels';
+			?>
+			<h2><?php esc_html_e( 'Blauwdrukversies (labels)', 'vtc-training-planner' ); ?></h2>
+			<p class="description"><?php esc_html_e( 'Het label is de weergavenaam van een roosterversie (concept of live) in de visuele planner. Lege velden worden overgeslagen.', 'vtc-training-planner' ); ?></p>
+			<form method="post" id="<?php echo esc_attr( $ver_labels_form_id ); ?>" class="vtc-tp-version-labels-form">
+				<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
+				<input type="hidden" name="vtc_tp_action" value="save_version_labels" />
+			</form>
+			<?php foreach ( $bps as $b ) : ?>
+				<?php $vers = $this->db->list_versions_for_blueprint( (int) $b->id ); ?>
+				<?php if ( count( $vers ) === 0 ) : ?>
+					<?php continue; ?>
+				<?php endif; ?>
+				<h3><?php echo esc_html( $b->name ); ?> <span class="description">(ID <?php echo (int) $b->id; ?>)</span></h3>
+				<table class="widefat striped" style="max-width:720px;margin-bottom:1.25rem">
+					<thead>
+						<tr>
+							<th scope="col" style="width:5rem"><?php esc_html_e( 'Versie', 'vtc-training-planner' ); ?></th>
+							<th scope="col"><?php esc_html_e( 'Label', 'vtc-training-planner' ); ?></th>
+							<th scope="col" style="width:8rem"><?php esc_html_e( 'Status', 'vtc-training-planner' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+					<?php foreach ( $vers as $v ) : ?>
+						<tr>
+							<td><code><?php echo (int) $v->id; ?></code></td>
+							<td>
+								<label class="screen-reader-text" for="ver-label-<?php echo (int) $v->id; ?>"><?php esc_html_e( 'Label', 'vtc-training-planner' ); ?></label>
+								<input form="<?php echo esc_attr( $ver_labels_form_id ); ?>" id="ver-label-<?php echo (int) $v->id; ?>" class="regular-text" name="version_labels[<?php echo (int) $v->id; ?>]" value="<?php echo esc_attr( $v->label ); ?>" />
+							</td>
+							<td><?php echo (int) $v->is_published === 1 ? esc_html__( 'Live', 'vtc-training-planner' ) : esc_html__( 'Concept', 'vtc-training-planner' ); ?></td>
+						</tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endforeach; ?>
+			<p><button type="submit" class="button button-primary" form="<?php echo esc_attr( $ver_labels_form_id ); ?>"><?php esc_html_e( 'Versielabels opslaan', 'vtc-training-planner' ); ?></button></p>
 
 			<h2><?php esc_html_e( 'Afwijkende blauwdruk toevoegen', 'vtc-training-planner' ); ?></h2>
 			<form method="post" class="vtc-tp-inline-form">
@@ -658,7 +781,7 @@ class VTC_TP_Admin {
 							<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
 							<input type="hidden" name="vtc_tp_action" value="delete_deviation_week_admin" />
 							<input type="hidden" name="deviation_week_id" value="<?php echo (int) $w->id; ?>" />
-							<button class="button-link-delete"><?php esc_html_e( 'Verwijderen', 'vtc-training-planner' ); ?></button>
+							<button type="submit" class="button-link-delete"><?php esc_html_e( 'Verwijderen', 'vtc-training-planner' ); ?></button>
 						</form>
 					</td>
 				</tr>
