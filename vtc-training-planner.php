@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'VTC_TP_VERSION', '0.2.20' );
+define( 'VTC_TP_VERSION', '0.2.21' );
 define( 'VTC_TP_FILE', __FILE__ );
 define( 'VTC_TP_DIR', plugin_dir_path( __FILE__ ) );
 define( 'VTC_TP_URL', plugin_dir_url( __FILE__ ) );

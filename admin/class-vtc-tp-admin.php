@@ -344,14 +344,15 @@ class VTC_TP_Admin {
 						'blueprint_id'           => $bp,
 						'display_name'           => sanitize_text_field( wp_unslash( $_POST['display_name'] ?? '' ) ),
 						'nevobo_team_type'       => sanitize_text_field( wp_unslash( $_POST['nevobo_team_type'] ?? '' ) ),
-						'nevobo_number'          => max( 1, absint( $_POST['nevobo_number'] ?? 1 ) ),
-						'sort_order'             => absint( $_POST['sort_order'] ?? 0 ),
+						'nevobo_number'          => 1,
+						'sort_order'             => 0,
 						'trainings_per_week'     => max( 0, absint( $_POST['trainings_per_week'] ?? 2 ) ),
 						'min_training_minutes'   => max( 1, absint( $_POST['min_training_minutes'] ?? 90 ) ),
 						'max_training_minutes'   => max( 1, absint( $_POST['max_training_minutes'] ?? 90 ) ),
 					),
 					array( '%d', '%s', '%s', '%d', '%d', '%d', '%d', '%d' )
 				);
+				add_settings_error( 'vtc_tp', 'team_add', __( 'Team toegevoegd.', 'vtc-training-planner' ), 'success' );
 				break;
 
 			case 'save_all_teams':
@@ -361,18 +362,27 @@ class VTC_TP_Admin {
 					if ( $tid < 1 ) {
 						continue;
 					}
+					$owned = (int) $wpdb->get_var(
+						$wpdb->prepare(
+							"SELECT COUNT(1) FROM {$p}vtc_tp_team WHERE id = %d AND blueprint_id = %d",
+							$tid,
+							$bp
+						)
+					);
+					if ( ! $owned ) {
+						continue;
+					}
 					$wpdb->update(
 						"{$p}vtc_tp_team",
 						array(
 							'display_name'           => sanitize_text_field( $row['display_name'] ?? '' ),
-							'nevobo_team_type'         => sanitize_text_field( $row['nevobo_team_type'] ?? '' ),
-							'sort_order'               => absint( $row['sort_order'] ?? 0 ),
-							'trainings_per_week'       => max( 0, absint( $row['trainings_per_week'] ?? 2 ) ),
-							'min_training_minutes'     => max( 1, absint( $row['min_training_minutes'] ?? 90 ) ),
-							'max_training_minutes'     => max( 1, absint( $row['max_training_minutes'] ?? 90 ) ),
+							'nevobo_team_type'       => sanitize_text_field( $row['nevobo_team_type'] ?? '' ),
+							'trainings_per_week'     => max( 0, absint( $row['trainings_per_week'] ?? 2 ) ),
+							'min_training_minutes'   => max( 1, absint( $row['min_training_minutes'] ?? 90 ) ),
+							'max_training_minutes'   => max( 1, absint( $row['max_training_minutes'] ?? 90 ) ),
 						),
 						array( 'id' => $tid ),
-						array( '%s', '%s', '%d', '%d', '%d', '%d' ),
+						array( '%s', '%s', '%d', '%d', '%d' ),
 						array( '%d' )
 					);
 				}
@@ -381,10 +391,26 @@ class VTC_TP_Admin {
 
 			case 'delete_team':
 				$tid = absint( $_POST['team_id'] ?? 0 );
+				if ( $tid < 1 ) {
+					add_settings_error( 'vtc_tp', 'team_del', __( 'Ongeldig team.', 'vtc-training-planner' ), 'error' );
+					break;
+				}
+				$owned = (int) $wpdb->get_var(
+					$wpdb->prepare(
+						"SELECT COUNT(1) FROM {$p}vtc_tp_team WHERE id = %d AND blueprint_id = %d",
+						$tid,
+						$bp
+					)
+				);
+				if ( ! $owned ) {
+					add_settings_error( 'vtc_tp', 'team_del', __( 'Team hoort niet bij deze blauwdruk.', 'vtc-training-planner' ), 'error' );
+					break;
+				}
 				$wpdb->delete( "{$p}vtc_tp_slot_draft", array( 'team_id' => $tid ), array( '%d' ) );
 				$wpdb->delete( "{$p}vtc_tp_slot_published", array( 'team_id' => $tid ), array( '%d' ) );
 				$wpdb->delete( "{$p}vtc_tp_exception_slot", array( 'team_id' => $tid ), array( '%d' ) );
 				$wpdb->delete( "{$p}vtc_tp_team", array( 'id' => $tid ), array( '%d' ) );
+				add_settings_error( 'vtc_tp', 'team_del', __( 'Team verwijderd.', 'vtc-training-planner' ), 'success' );
 				break;
 
 			case 'add_location':
@@ -747,57 +773,60 @@ class VTC_TP_Admin {
 			</form>
 
 			<h2><?php esc_html_e( 'Teams', 'vtc-training-planner' ); ?></h2>
-			<p class="description"><?php esc_html_e( 'Komt overeen met teams in Team: display_name, nevobo_team_type (bv. dames-senioren, jongens-a), trainings per week, min/max minuten.', 'vtc-training-planner' ); ?></p>
-			<form method="post">
+			<p class="description"><?php esc_html_e( 'Komt overeen met teams in Team: display_name, nevobo_team_type (bv. dames-senioren, jongens-a), trainings per week, min/max minuten. Lijst is alfabetisch op weergavenaam.', 'vtc-training-planner' ); ?></p>
+			<?php
+			$teams_save_form_id = 'vtc-tp-teams-save';
+			?>
+			<form method="post" id="<?php echo esc_attr( $teams_save_form_id ); ?>" class="vtc-tp-teams-save-form">
 				<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
 				<input type="hidden" name="vtc_tp_action" value="save_all_teams" />
-				<table class="widefat striped vtc-tp-table-teams">
-					<thead>
-						<tr>
-							<th><?php esc_html_e( 'Weergavenaam', 'vtc-training-planner' ); ?></th>
-							<th><?php esc_html_e( 'Nevobo team-type', 'vtc-training-planner' ); ?></th>
-							<th><?php esc_html_e( 'Tr/wk', 'vtc-training-planner' ); ?></th>
-							<th><?php esc_html_e( 'Min', 'vtc-training-planner' ); ?></th>
-							<th><?php esc_html_e( 'Max', 'vtc-training-planner' ); ?></th>
-							<th><?php esc_html_e( 'Sort', 'vtc-training-planner' ); ?></th>
-							<th><?php esc_html_e( 'Actie', 'vtc-training-planner' ); ?></th>
-						</tr>
-					</thead>
-					<tbody>
-					<?php foreach ( $teams as $t ) : ?>
-						<tr>
-							<td><input name="teams[<?php echo (int) $t->id; ?>][display_name]" value="<?php echo esc_attr( $t->display_name ); ?>" class="regular-text" required /></td>
-							<td><input name="teams[<?php echo (int) $t->id; ?>][nevobo_team_type]" value="<?php echo esc_attr( $t->nevobo_team_type ?? '' ); ?>" class="regular-text" /></td>
-							<td><input name="teams[<?php echo (int) $t->id; ?>][trainings_per_week]" type="number" min="0" value="<?php echo (int) $t->trainings_per_week; ?>" style="width:3.5rem" /></td>
-							<td><input name="teams[<?php echo (int) $t->id; ?>][min_training_minutes]" type="number" min="1" value="<?php echo (int) ( $t->min_training_minutes ?? 90 ); ?>" style="width:4rem" /></td>
-							<td><input name="teams[<?php echo (int) $t->id; ?>][max_training_minutes]" type="number" min="1" value="<?php echo (int) ( $t->max_training_minutes ?? 90 ); ?>" style="width:4rem" /></td>
-							<td><input name="teams[<?php echo (int) $t->id; ?>][sort_order]" type="number" value="<?php echo (int) $t->sort_order; ?>" style="width:3.5rem" /></td>
-							<td>
-								<form method="post" style="display:inline" onsubmit="return confirm('<?php echo esc_js( __( 'Team verwijderen?', 'vtc-training-planner' ) ); ?>');">
-									<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
-									<input type="hidden" name="vtc_tp_action" value="delete_team" />
-									<input type="hidden" name="team_id" value="<?php echo (int) $t->id; ?>" />
-									<button type="submit" class="button button-link-delete"><?php esc_html_e( 'Verwijderen', 'vtc-training-planner' ); ?></button>
-								</form>
-							</td>
-						</tr>
-					<?php endforeach; ?>
-					</tbody>
-				</table>
-				<?php if ( count( $teams ) > 0 ) : ?>
-					<p><button type="submit" class="button button-primary"><?php esc_html_e( 'Alle teams opslaan', 'vtc-training-planner' ); ?></button></p>
-				<?php endif; ?>
+				<input type="hidden" name="blueprint_id" value="<?php echo (int) $bp; ?>" />
 			</form>
+			<table class="widefat striped vtc-tp-table-teams">
+				<thead>
+					<tr>
+						<th><?php esc_html_e( 'Weergavenaam', 'vtc-training-planner' ); ?></th>
+						<th><?php esc_html_e( 'Nevobo team-type', 'vtc-training-planner' ); ?></th>
+						<th><?php esc_html_e( 'Tr/wk', 'vtc-training-planner' ); ?></th>
+						<th><?php esc_html_e( 'Min', 'vtc-training-planner' ); ?></th>
+						<th><?php esc_html_e( 'Max', 'vtc-training-planner' ); ?></th>
+						<th><?php esc_html_e( 'Actie', 'vtc-training-planner' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+				<?php foreach ( $teams as $t ) : ?>
+					<tr>
+						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo (int) $t->id; ?>][display_name]" value="<?php echo esc_attr( $t->display_name ); ?>" class="regular-text" required /></td>
+						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo (int) $t->id; ?>][nevobo_team_type]" value="<?php echo esc_attr( $t->nevobo_team_type ?? '' ); ?>" class="regular-text" /></td>
+						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo (int) $t->id; ?>][trainings_per_week]" type="number" min="0" value="<?php echo (int) $t->trainings_per_week; ?>" style="width:3.5rem" /></td>
+						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo (int) $t->id; ?>][min_training_minutes]" type="number" min="1" value="<?php echo (int) ( $t->min_training_minutes ?? 90 ); ?>" style="width:4rem" /></td>
+						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo (int) $t->id; ?>][max_training_minutes]" type="number" min="1" value="<?php echo (int) ( $t->max_training_minutes ?? 90 ); ?>" style="width:4rem" /></td>
+						<td>
+							<form method="post" class="vtc-tp-inline-delete" onsubmit="return confirm('<?php echo esc_js( __( 'Team verwijderen?', 'vtc-training-planner' ) ); ?>');">
+								<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
+								<input type="hidden" name="vtc_tp_action" value="delete_team" />
+								<input type="hidden" name="blueprint_id" value="<?php echo (int) $bp; ?>" />
+								<input type="hidden" name="team_id" value="<?php echo (int) $t->id; ?>" />
+								<button type="submit" class="button button-link-delete"><?php esc_html_e( 'Verwijderen', 'vtc-training-planner' ); ?></button>
+							</form>
+						</td>
+					</tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+			<?php if ( count( $teams ) > 0 ) : ?>
+				<p><button type="submit" class="button button-primary" form="<?php echo esc_attr( $teams_save_form_id ); ?>"><?php esc_html_e( 'Alle teams opslaan', 'vtc-training-planner' ); ?></button></p>
+			<?php endif; ?>
 			<h3><?php esc_html_e( 'Team toevoegen', 'vtc-training-planner' ); ?></h3>
 			<form method="post" class="vtc-tp-inline-form vtc-tp-add-team">
 				<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
 				<input type="hidden" name="vtc_tp_action" value="add_team" />
+				<input type="hidden" name="blueprint_id" value="<?php echo (int) $bp; ?>" />
 				<input name="display_name" placeholder="<?php esc_attr_e( 'Weergavenaam', 'vtc-training-planner' ); ?>" required class="regular-text" />
 				<input name="nevobo_team_type" placeholder="<?php esc_attr_e( 'Nevobo type', 'vtc-training-planner' ); ?>" class="regular-text" />
 				<input name="trainings_per_week" type="number" min="0" value="2" style="width:3.5rem" title="<?php esc_attr_e( 'Trainings per week', 'vtc-training-planner' ); ?>" />
 				<input name="min_training_minutes" type="number" min="1" value="90" style="width:4rem" />
 				<input name="max_training_minutes" type="number" min="1" value="90" style="width:4rem" />
-				<input name="sort_order" type="number" value="0" style="width:3.5rem" />
 				<?php submit_button( __( 'Team toevoegen', 'vtc-training-planner' ), 'secondary', '', false ); ?>
 			</form>
 

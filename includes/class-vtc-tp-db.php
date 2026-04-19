@@ -390,7 +390,7 @@ class VTC_TP_DB {
 		$p = $wpdb->prefix;
 		return $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM {$p}vtc_tp_team WHERE blueprint_id = %d ORDER BY sort_order ASC, display_name ASC",
+				"SELECT * FROM {$p}vtc_tp_team WHERE blueprint_id = %d ORDER BY display_name ASC",
 				$blueprint_id
 			)
 		);
