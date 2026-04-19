@@ -35,6 +35,14 @@
 	margin-bottom: 1rem;
 }
 
+.vtc-tp-week-header--notes-only {
+	margin-bottom: 0.75rem;
+}
+
+.vtc-tp-week-header--notes-only .vtc-tp-week-note:first-of-type {
+	margin-top: 0;
+}
+
 .vtc-tp-week-header-row {
 	display: flex;
 	align-items: center;
@@ -53,6 +61,26 @@
 	margin: 0;
 }
 
+.vtc-tp-week-toolbar {
+	margin-bottom: 0.75rem;
+}
+
+.vtc-tp-week-shell--loading {
+	opacity: 0.72;
+	pointer-events: none;
+	transition: opacity 0.15s ease;
+}
+
+.vtc-tp-week-ajax-error {
+	margin: 12px 0;
+	padding: 12px 14px;
+	background: #fcf0f1;
+	border: 1px solid #d63638;
+	border-radius: 8px;
+	color: #8a2424;
+	font-weight: 600;
+}
+
 .vtc-tp-week-nav-btn {
 	flex: 0 0 auto;
 	display: inline-flex;
@@ -60,11 +88,14 @@
 	justify-content: center;
 	width: 40px;
 	height: 40px;
+	padding: 0;
 	border-radius: 8px;
 	border: 1px solid var(--vtc-tp-border);
 	background: #fff;
 	color: var(--vtc-tp-accent);
 	text-decoration: none;
+	font: inherit;
+	cursor: pointer;
 	box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 	transition: background 0.12s, box-shadow 0.12s;
 }
@@ -285,23 +316,26 @@
 	line-height: 1.25;
 }
 
-.vtc-tp-block-time {
-	display: block;
+.vtc-tp-block-times {
+	display: flex;
+	align-items: center;
+	flex-wrap: nowrap;
+	gap: 2px;
 	font-size: 9px;
 	opacity: 0.95;
-	font-weight: 500;
-	margin-top: 2px;
+	font-weight: 600;
+	margin-top: 3px;
+	white-space: nowrap;
 }
 
-.vtc-tp-block-sub {
-	display: block;
-	font-size: 8px;
-	opacity: 0.88;
+.vtc-tp-block-start,
+.vtc-tp-block-end {
+	font-variant-numeric: tabular-nums;
+}
+
+.vtc-tp-block-sep {
+	opacity: 0.85;
 	font-weight: 500;
-	margin-top: 2px;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
 }
 
 /* Blok-editor: korte placeholder als SSR nog laadt */

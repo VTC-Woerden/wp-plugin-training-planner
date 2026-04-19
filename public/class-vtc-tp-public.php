@@ -58,24 +58,18 @@ class VTC_TP_Public {
 		$week_attr = isset( $atts['week'] ) ? trim( (string) $atts['week'] ) : '';
 		$lock_week  = ( '' !== $week_attr );
 		if ( $lock_week ) {
-			$week = VTC_TP_Schedule::normalize_iso_week( $week_attr ) ?: VTC_TP_Schedule::current_iso_week();
+			$week = VTC_TP_Schedule::normalize_iso_week( $week_attr ) ?: VTC_TP_Schedule::current_iso_week_public_calendar();
 		} else {
 			$get = isset( $_GET['vtc_tp_week'] ) ? sanitize_text_field( wp_unslash( $_GET['vtc_tp_week'] ) ) : '';
-			$week = VTC_TP_Schedule::normalize_iso_week( $get ) ?: VTC_TP_Schedule::current_iso_week();
+			$week = VTC_TP_Schedule::normalize_iso_week( $get ) ?: VTC_TP_Schedule::current_iso_week_public_calendar();
 		}
 		if ( ! $week ) {
-			$week = VTC_TP_Schedule::current_iso_week();
+			$week = VTC_TP_Schedule::current_iso_week_public_calendar();
 		}
 		wp_enqueue_style( 'vtc-tp-public' );
-		$data           = $this->schedule->get_merged_week( $week, $this->nevobo );
-		$permalink_base = '';
-		if ( is_singular() ) {
-			$qid = get_queried_object_id();
-			if ( $qid ) {
-				$permalink_base = get_permalink( $qid );
-			}
-		}
-		return self::render_week_html( $data, false, self::week_nav_config( $data['iso_week'], $lock_week, $permalink_base ) );
+		$data = $this->schedule->get_merged_week( $week, $this->nevobo );
+		$data = $this->with_public_week_event_bridge( $data );
+		return self::render_week_html( $data, false, self::week_nav_config( $data['iso_week'], $lock_week ) );
 	}
 
 	public function register_block() {
@@ -111,28 +105,19 @@ class VTC_TP_Public {
 		$week_attr = isset( $attrs['week'] ) ? trim( (string) $attrs['week'] ) : '';
 		$lock_week = ( '' !== $week_attr );
 		if ( $lock_week ) {
-			$week = VTC_TP_Schedule::normalize_iso_week( $week_attr ) ?: VTC_TP_Schedule::current_iso_week();
+			$week = VTC_TP_Schedule::normalize_iso_week( $week_attr ) ?: VTC_TP_Schedule::current_iso_week_public_calendar();
 		} else {
 			$get = isset( $_GET['vtc_tp_week'] ) ? sanitize_text_field( wp_unslash( $_GET['vtc_tp_week'] ) ) : '';
-			$week = VTC_TP_Schedule::normalize_iso_week( $get ) ?: VTC_TP_Schedule::current_iso_week();
+			$week = VTC_TP_Schedule::normalize_iso_week( $get ) ?: VTC_TP_Schedule::current_iso_week_public_calendar();
 		}
 		if ( ! $week ) {
-			$week = VTC_TP_Schedule::current_iso_week();
+			$week = VTC_TP_Schedule::current_iso_week_public_calendar();
 		}
 		wp_enqueue_style( 'vtc-tp-public' );
 		$data = $this->schedule->get_merged_week( $week, $this->nevobo );
+		$data = $this->with_public_week_event_bridge( $data );
 
-		$permalink_base = '';
-		if ( $block instanceof WP_Block && ! empty( $block->context['postId'] ) ) {
-			$permalink_base = get_permalink( (int) $block->context['postId'] );
-		} elseif ( is_singular() ) {
-			$qid = get_queried_object_id();
-			if ( $qid ) {
-				$permalink_base = get_permalink( $qid );
-			}
-		}
-
-		return self::render_week_html( $data, false, self::week_nav_config( $data['iso_week'], $lock_week, $permalink_base ) );
+		return self::render_week_html( $data, false, self::week_nav_config( $data['iso_week'], $lock_week ) );
 	}
 
 	public function register_rest() {
@@ -143,6 +128,21 @@ class VTC_TP_Public {
 				'methods'             => 'GET',
 				'callback'            => array( $this, 'rest_week' ),
 				'permission_callback' => '__return_true',
+			)
+		);
+		register_rest_route(
+			'vtc-tp/v1',
+			'/week-html',
+			array(
+				'methods'             => 'GET',
+				'callback'            => array( $this, 'rest_week_html' ),
+				'permission_callback' => '__return_true',
+				'args'                => array(
+					'week' => array(
+						'required' => true,
+						'type'     => 'string',
+					),
+				),
 			)
 		);
 	}
@@ -165,69 +165,99 @@ class VTC_TP_Public {
 	}
 
 	/**
-	 * @param array{events: array, iso_week: string, used_exceptions: bool} $data
-	 * @param array{enabled?:bool,prev_url?:string,next_url?:string}|null    $nav_config
+	 * HTML-fragment voor het weekrooster (AJAX), zonder toolbar/shell.
 	 */
-	public static function render_week_html( array $data, $is_admin = false, $nav_config = null ) {
-		$tz = wp_timezone();
-		$nav = ( ! $is_admin && is_array( $nav_config ) && ! empty( $nav_config['enabled'] ) )
-			? $nav_config
-			: array( 'enabled' => false );
+	public function rest_week_html( WP_REST_Request $req ) {
+		$week = VTC_TP_Schedule::normalize_iso_week( (string) $req->get_param( 'week' ) );
+		if ( ! $week ) {
+			return new WP_Error( 'bad_week', __( 'Ongeldige week', 'vtc-training-planner' ), array( 'status' => 400 ) );
+		}
+		$data = $this->schedule->get_merged_week( $week, $this->nevobo );
+		$data = $this->with_public_week_event_bridge( $data );
+		$html = self::get_week_calendar_html( $data, false, true );
+		$prev      = VTC_TP_Schedule::shift_iso_week( $data['iso_week'], -1 );
+		$next      = VTC_TP_Schedule::shift_iso_week( $data['iso_week'], 1 );
+		$week_lbl  = sprintf( __( 'Week %s', 'vtc-training-planner' ), $data['iso_week'] );
+		return rest_ensure_response(
+			array(
+				'html'       => $html,
+				'iso_week'   => $data['iso_week'],
+				'week_label' => $week_lbl,
+				'prev_iso'   => $prev ? $prev : '',
+				'next_iso'   => $next ? $next : '',
+			)
+		);
+	}
 
+	/**
+	 * Alleen het kalender-deel (één .vtc-tp-week), voor AJAX of volledige pagina.
+	 *
+	 * @param array{events: array, iso_week: string, used_exceptions: bool} $data
+	 * @param bool                                                             $show_main_title Hoofdtitel "Week …" in de week-header (uit bij AJAX-toolbar).
+	 * @param bool                                                             $public_week_layout Zondag vóór ISO-maandag t/m zaterdag (voorkant); false = ISO ma–zo (admin).
+	 */
+	public static function get_week_calendar_html( array $data, $show_main_title, $public_week_layout = false ) {
+		$tz = wp_timezone();
 		ob_start();
-		if ( ! empty( $nav['enabled'] ) ) {
-			wp_enqueue_script( 'vtc-tp-week-nav' );
-		}
-		echo '<div class="vtc-tp-week-shell"';
-		if ( ! empty( $nav['enabled'] ) && ! empty( $nav['prev_url'] ) && ! empty( $nav['next_url'] ) ) {
-			echo ' data-prev-url="' . esc_attr( $nav['prev_url'] ) . '" data-next-url="' . esc_attr( $nav['next_url'] ) . '"';
-		}
-		echo '>';
 		echo '<div class="vtc-tp-week vtc-tp-week--visual" data-iso-week="' . esc_attr( $data['iso_week'] ) . '">';
-		echo '<header class="vtc-tp-week-header">';
-		if ( ! empty( $nav['enabled'] ) && ! empty( $nav['prev_url'] ) && ! empty( $nav['next_url'] ) ) {
-			echo '<div class="vtc-tp-week-header-row">';
-			echo '<a class="vtc-tp-week-nav-btn" href="' . esc_url( $nav['prev_url'] ) . '" rel="nofollow noopener" aria-label="' . esc_attr__( 'Vorige week', 'vtc-training-planner' ) . '"><span class="vtc-tp-week-nav-icon" aria-hidden="true">&#8592;</span></a>';
-			echo '<div class="vtc-tp-week-title-wrap"><h2 class="vtc-tp-week-title">' . esc_html( sprintf( __( 'Week %s', 'vtc-training-planner' ), $data['iso_week'] ) ) . '</h2></div>';
-			echo '<a class="vtc-tp-week-nav-btn" href="' . esc_url( $nav['next_url'] ) . '" rel="nofollow noopener" aria-label="' . esc_attr__( 'Volgende week', 'vtc-training-planner' ) . '"><span class="vtc-tp-week-nav-icon" aria-hidden="true">&#8594;</span></a>';
-			echo '</div>';
-		} else {
-			echo '<h2 class="vtc-tp-week-title">' . esc_html( sprintf( __( 'Week %s', 'vtc-training-planner' ), $data['iso_week'] ) ) . '</h2>';
+		$has_notes = ! empty( $data['used_exceptions'] ) || ! empty( $data['uses_deviation_blueprint'] );
+		if ( $show_main_title || $has_notes ) {
+			echo '<header class="vtc-tp-week-header' . ( $show_main_title ? '' : ' vtc-tp-week-header--notes-only' ) . '">';
+			if ( $show_main_title ) {
+				echo '<h2 class="vtc-tp-week-title">' . esc_html( sprintf( __( 'Week %s', 'vtc-training-planner' ), $data['iso_week'] ) ) . '</h2>';
+			}
+			if ( ! empty( $data['used_exceptions'] ) ) {
+				echo '<p class="vtc-tp-week-note">' . esc_html__( 'Deze week gebruikt een uitzonderingsrooster.', 'vtc-training-planner' ) . '</p>';
+			}
+			if ( ! empty( $data['uses_deviation_blueprint'] ) ) {
+				echo '<p class="vtc-tp-week-note">' . esc_html__( 'Deze week volgt een afwijkende blauwdruk.', 'vtc-training-planner' ) . '</p>';
+			}
+			echo '</header>';
 		}
-		if ( ! empty( $data['used_exceptions'] ) ) {
-			echo '<p class="vtc-tp-week-note">' . esc_html__( 'Deze week gebruikt een uitzonderingsrooster.', 'vtc-training-planner' ) . '</p>';
-		}
-		if ( ! empty( $data['uses_deviation_blueprint'] ) ) {
-			echo '<p class="vtc-tp-week-note">' . esc_html__( 'Deze week volgt een afwijkende blauwdruk.', 'vtc-training-planner' ) . '</p>';
-		}
-		echo '</header>';
 
 		if ( empty( $data['events'] ) ) {
 			echo '<p class="vtc-tp-week-empty">' . esc_html__( 'Geen trainingen of wedstrijden in deze week.', 'vtc-training-planner' ) . '</p>';
-			echo '</div></div>';
+			echo '</div>';
 			return ob_get_clean();
 		}
 
 		$by_date = self::week_events_grouped_by_date( $data['events'], $tz );
 		$monday  = self::monday_of_iso_week_string( $data['iso_week'], $tz );
 		if ( ! $monday ) {
-			echo '<p class="vtc-tp-week-empty">' . esc_html__( 'Ongeldige week.', 'vtc-training-planner' ) . '</p></div></div>';
+			echo '<p class="vtc-tp-week-empty">' . esc_html__( 'Ongeldige week.', 'vtc-training-planner' ) . '</p></div>';
 			return ob_get_clean();
 		}
 
-		$day_names = VTC_TP_Schedule::team_day_names();
+		if ( $public_week_layout ) {
+			$anchor    = $monday->modify( '-1 day' );
+			$day_names = VTC_TP_Schedule::public_calendar_day_names();
+		} else {
+			$anchor    = $monday;
+			$day_names = VTC_TP_Schedule::team_day_names();
+		}
+
 		echo '<div class="vtc-tp-days">';
 
-		for ( $dow = 0; $dow <= 6; $dow++ ) {
-			$day_dt = $monday->modify( '+' . $dow . ' days' );
+		for ( $i = 0; $i < 7; $i++ ) {
+			$day_dt = $anchor->modify( '+' . $i . ' days' );
 			$ymd    = $day_dt->format( 'Y-m-d' );
 			$day_ts = $day_dt->getTimestamp();
 			$evs    = isset( $by_date[ $ymd ] ) ? $by_date[ $ymd ] : array();
 
-			echo '<section class="vtc-tp-day" data-dow="' . (int) $dow . '" data-date="' . esc_attr( $ymd ) . '">';
+			// Publiek: kalender-zondag (slot 0) en -zaterdag (slot 6) verbergen bij geen items.
+			// Admin (ISO): zaterdag (5) en zondag (6) verbergen bij geen items.
+			if ( $public_week_layout ) {
+				if ( empty( $evs ) && ( 0 === $i || 6 === $i ) ) {
+					continue;
+				}
+			} elseif ( empty( $evs ) && ( 5 === $i || 6 === $i ) ) {
+				continue;
+			}
+
+			echo '<section class="vtc-tp-day" data-dow="' . (int) $i . '" data-date="' . esc_attr( $ymd ) . '">';
 			echo '<div class="vtc-tp-day-head">';
 			echo '<div class="vtc-tp-day-head-main">';
-			echo '<span class="vtc-tp-day-name">' . esc_html( $day_names[ $dow ] ?? '' ) . '</span> ';
+			echo '<span class="vtc-tp-day-name">' . esc_html( $day_names[ $i ] ?? '' ) . '</span> ';
 			echo '<time class="vtc-tp-day-date" datetime="' . esc_attr( $ymd ) . '">' . esc_html( date_i18n( 'j F Y', $day_ts ) ) . '</time>';
 			echo '</div>';
 			echo '</div>';
@@ -238,10 +268,10 @@ class VTC_TP_Public {
 				continue;
 			}
 
-			$win    = self::day_minute_window( $evs, $tz, $ymd );
-			$t0     = $win['t0'];
-			$t1     = $win['t1'];
-			$span   = max( 1, $t1 - $t0 );
+			$win       = self::day_minute_window( $evs, $tz, $ymd );
+			$t0        = $win['t0'];
+			$t1        = $win['t1'];
+			$span      = max( 1, $t1 - $t0 );
 			$hours_css = $span / 60.0;
 
 			$lanes = self::lanes_for_day_events( $evs );
@@ -271,14 +301,14 @@ class VTC_TP_Public {
 					}
 					$start = ( new DateTimeImmutable( '@' . (int) $ev['start_ts'] ) )->setTimezone( $tz );
 					$end   = ( new DateTimeImmutable( '@' . (int) $ev['end_ts'] ) )->setTimezone( $tz );
-					$sm = (int) $start->format( 'H' ) * 60 + (int) $start->format( 'i' );
-					$em = (int) $end->format( 'H' ) * 60 + (int) $end->format( 'i' );
+					$sm    = (int) $start->format( 'H' ) * 60 + (int) $start->format( 'i' );
+					$em    = (int) $end->format( 'H' ) * 60 + (int) $end->format( 'i' );
 					if ( $end->format( 'Y-m-d' ) !== $ymd ) {
 						$em = 24 * 60;
 					}
-					$em = max( $em, $sm + 15 );
-					$sm = max( $t0, min( $sm, $t1 ) );
-					$em = max( $sm + 15, min( $em, $t1 ) );
+					$em        = max( $em, $sm + 15 );
+					$sm        = max( $t0, min( $sm, $t1 ) );
+					$em        = max( $sm + 15, min( $em, $t1 ) );
 					$left_pct  = ( ( $sm - $t0 ) / $span ) * 100.0;
 					$width_pct = ( ( $em - $sm ) / $span ) * 100.0;
 					$left_pct  = max( 0, min( 100, $left_pct ) );
@@ -291,8 +321,7 @@ class VTC_TP_Public {
 					$bg = self::event_block_color( $ev );
 					echo '<div class="' . esc_attr( $cls ) . '" style="left:' . esc_attr( (string) round( $left_pct, 4 ) ) . '%;width:' . esc_attr( (string) round( $width_pct, 4 ) ) . '%;background:' . esc_attr( $bg ) . '">';
 					echo '<span class="vtc-tp-block-title">' . esc_html( $ev['title'] ) . '</span>';
-					echo '<span class="vtc-tp-block-time">' . esc_html( $start->format( 'H:i' ) . '–' . $end->format( 'H:i' ) ) . '</span>';
-					echo '<span class="vtc-tp-block-sub">' . esc_html( $ev['subtitle'] ) . '</span>';
+					echo '<span class="vtc-tp-block-times"><span class="vtc-tp-block-start">' . esc_html( $start->format( 'H:i' ) ) . '</span><span class="vtc-tp-block-sep" aria-hidden="true">–</span><span class="vtc-tp-block-end">' . esc_html( $end->format( 'H:i' ) ) . '</span></span>';
 					echo '</div>';
 				}
 				echo '</div>';
@@ -301,17 +330,79 @@ class VTC_TP_Public {
 			echo '</div></div></section>';
 		}
 
-		echo '</div></div></div>';
+		echo '</div></div>';
 		return ob_get_clean();
 	}
 
 	/**
-	 * Weeknavigatie (?vtc_tp_week=) alleen als de week niet vast in shortcode/blok staat.
-	 *
-	 * @param string $permalink_base Permalink van de pagina met het rooster (leeg = home_url).
-	 * @return array{enabled:bool,prev_url?:string,next_url?:string}
+	 * @param array{events: array, iso_week: string, used_exceptions: bool} $data
+	 * @param array{enabled?:bool,prev_iso?:string,next_iso?:string}|null     $nav_config
 	 */
-	private static function week_nav_config( $iso_week, $week_locked, $permalink_base = '' ) {
+	public static function render_week_html( array $data, $is_admin = false, $nav_config = null ) {
+		$nav = ( ! $is_admin && is_array( $nav_config ) && ! empty( $nav_config['enabled'] ) )
+			? $nav_config
+			: array( 'enabled' => false );
+
+		$ajax_nav = ! $is_admin && ! empty( $nav['enabled'] ) && ! empty( $nav['prev_iso'] ) && ! empty( $nav['next_iso'] );
+
+		ob_start();
+		if ( $ajax_nav ) {
+			wp_enqueue_script( 'vtc-tp-week-nav' );
+			wp_localize_script(
+				'vtc-tp-week-nav',
+				'vtcTpWeekNav',
+				array(
+					'url'    => untrailingslashit( rest_url( 'vtc-tp/v1/week-html' ) ),
+					'errMsg' => __( 'Week laden mislukt.', 'vtc-training-planner' ),
+				)
+			);
+		}
+
+		echo '<div class="vtc-tp-week-shell"';
+		if ( $ajax_nav ) {
+			echo ' data-ajax-week="1" data-prev-iso="' . esc_attr( $nav['prev_iso'] ) . '" data-next-iso="' . esc_attr( $nav['next_iso'] ) . '" data-current-iso="' . esc_attr( $data['iso_week'] ) . '"';
+		}
+		echo '>';
+
+		if ( $ajax_nav ) {
+			echo '<div class="vtc-tp-week-header-row vtc-tp-week-toolbar">';
+			echo '<button type="button" class="vtc-tp-week-nav-btn" data-nav-week="' . esc_attr( $nav['prev_iso'] ) . '" aria-label="' . esc_attr__( 'Vorige week', 'vtc-training-planner' ) . '"><span class="vtc-tp-week-nav-icon" aria-hidden="true">&#8592;</span></button>';
+			echo '<div class="vtc-tp-week-title-wrap"><h2 class="vtc-tp-week-title vtc-tp-week-title--toolbar">' . esc_html( sprintf( __( 'Week %s', 'vtc-training-planner' ), $data['iso_week'] ) ) . '</h2></div>';
+			echo '<button type="button" class="vtc-tp-week-nav-btn" data-nav-week="' . esc_attr( $nav['next_iso'] ) . '" aria-label="' . esc_attr__( 'Volgende week', 'vtc-training-planner' ) . '"><span class="vtc-tp-week-nav-icon" aria-hidden="true">&#8594;</span></button>';
+			echo '</div>';
+			echo '<div class="vtc-tp-week-ajax-inner">';
+		}
+
+		echo self::get_week_calendar_html( $data, ! $ajax_nav, ! $is_admin );
+
+		if ( $ajax_nav ) {
+			echo '</div>';
+		}
+		echo '</div>';
+		return ob_get_clean();
+	}
+
+	/**
+	 * Voeg zondag vóór ISO-maandag toe (events uit vorige ISO-week) en herbereken overlapvlaggen.
+	 *
+	 * @param array{events: array, iso_week: string, used_exceptions?: bool, uses_deviation_blueprint?: bool, effective_blueprint_id?: int|null} $data
+	 * @return array
+	 */
+	private function with_public_week_event_bridge( array $data ) {
+		$data['events'] = $this->schedule->merge_lead_sunday_events(
+			$data['iso_week'],
+			isset( $data['events'] ) && is_array( $data['events'] ) ? $data['events'] : array(),
+			$this->nevobo
+		);
+		return $data;
+	}
+
+	/**
+	 * Weeknavigatie via AJAX (alleen als week niet vast in shortcode/blok staat).
+	 *
+	 * @return array{enabled:bool,prev_iso?:string,next_iso?:string}
+	 */
+	private static function week_nav_config( $iso_week, $week_locked ) {
 		if ( $week_locked ) {
 			return array( 'enabled' => false );
 		}
@@ -321,22 +412,10 @@ class VTC_TP_Public {
 			return array( 'enabled' => false );
 		}
 		return array(
-			'enabled'  => true,
-			'prev_url' => self::public_week_nav_url( $prev, $permalink_base ),
-			'next_url' => self::public_week_nav_url( $next, $permalink_base ),
+			'enabled'   => true,
+			'prev_iso'  => $prev,
+			'next_iso'  => $next,
 		);
-	}
-
-	/**
-	 * @param string $iso_week       Genormaliseerde ISO-week.
-	 * @param string $permalink_base Basis-URL (bijv. permalink van de pagina).
-	 */
-	private static function public_week_nav_url( $iso_week, $permalink_base = '' ) {
-		$base = is_string( $permalink_base ) ? trim( $permalink_base ) : '';
-		if ( '' === $base ) {
-			$base = home_url( '/' );
-		}
-		return esc_url( add_query_arg( 'vtc_tp_week', (string) $iso_week, $base ) );
 	}
 
 	/**

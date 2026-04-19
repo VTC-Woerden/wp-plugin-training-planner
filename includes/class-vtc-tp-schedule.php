@@ -47,6 +47,18 @@ class VTC_TP_Schedule {
 	}
 
 	/**
+	 * Standaard ISO-week voor de publieke kalender (zondag t/m zaterdag rond die week).
+	 *
+	 * Op een zondag hoort de “week” visueel bij de week die op maandag begint; dan is de
+	 * ISO-week van morgen (maandag) de juiste keuze (bijv. 19 apr 2026 → 2026-W17).
+	 */
+	public static function current_iso_week_public_calendar() {
+		$tz = wp_timezone();
+		$d  = ( new DateTimeImmutable( 'now', $tz ) )->modify( '+1 day' );
+		return $d->format( 'o' ) . '-W' . $d->format( 'W' );
+	}
+
+	/**
 	 * Verschuif ISO-week met een aantal weken (negatief = terug).
 	 *
 	 * @param string $iso_week Genormaliseerde week (YYYY-Www).
@@ -82,6 +94,24 @@ class VTC_TP_Schedule {
 			4 => __( 'Vrijdag', 'vtc-training-planner' ),
 			5 => __( 'Zaterdag', 'vtc-training-planner' ),
 			6 => __( 'Zondag', 'vtc-training-planner' ),
+		);
+	}
+
+	/**
+	 * Dagnamen voor de publieke weekkolommen: zondag vóór ISO-maandag … zaterdag (index 0–6).
+	 *
+	 * @return array<int, string>
+	 */
+	public static function public_calendar_day_names() {
+		$t = self::team_day_names();
+		return array(
+			0 => $t[6],
+			1 => $t[0],
+			2 => $t[1],
+			3 => $t[2],
+			4 => $t[3],
+			5 => $t[4],
+			6 => $t[5],
 		);
 	}
 
@@ -357,5 +387,42 @@ class VTC_TP_Schedule {
 			'effective_blueprint_id'  => $bp_eff,
 			'uses_deviation_blueprint'=> $bp_eff !== $bp_base,
 		);
+	}
+
+	/**
+	 * Events op de zondag vóór de maandag van deze ISO-week (die vallen in de vorige ISO-week).
+	 *
+	 * @param string                           $iso_week Genormaliseerde ISO-week.
+	 * @param array<int, array<string, mixed>> $events   Events van get_merged_week( $iso_week ).
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function merge_lead_sunday_events( $iso_week, array $events, VTC_TP_Nevobo $nevobo ) {
+		$norm = self::normalize_iso_week( (string) $iso_week );
+		if ( ! $norm || ! preg_match( '/^(\d{4})-W(\d{2})$/', $norm, $m ) ) {
+			return $events;
+		}
+		$tz = wp_timezone();
+		try {
+			$monday = ( new DateTimeImmutable( 'now', $tz ) )->setISODate( (int) $m[1], (int) $m[2], 1 )->setTime( 0, 0, 0 );
+		} catch ( Exception $e ) {
+			return $events;
+		}
+		$lead_ymd = $monday->modify( '-1 day' )->format( 'Y-m-d' );
+		$prev_iso = self::shift_iso_week( $norm, -1 );
+		if ( ! $prev_iso ) {
+			return $events;
+		}
+		$prev  = $this->get_merged_week( $prev_iso, $nevobo );
+		$extra = array();
+		foreach ( $prev['events'] as $ev ) {
+			$d = ( new DateTimeImmutable( '@' . (int) $ev['start_ts'] ) )->setTimezone( $tz )->format( 'Y-m-d' );
+			if ( $d === $lead_ymd ) {
+				$extra[] = $ev;
+			}
+		}
+		if ( empty( $extra ) ) {
+			return $events;
+		}
+		return $this->merge_and_flag_conflicts( $events, $extra );
 	}
 }
