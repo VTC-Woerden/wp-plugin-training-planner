@@ -258,7 +258,7 @@ class VTC_TP_Public {
 			echo '<div class="vtc-tp-day-head">';
 			echo '<div class="vtc-tp-day-head-main">';
 			echo '<span class="vtc-tp-day-name">' . esc_html( $day_names[ $i ] ?? '' ) . '</span> ';
-			echo '<time class="vtc-tp-day-date" datetime="' . esc_attr( $ymd ) . '">' . esc_html( date_i18n( 'j F Y', $day_ts ) ) . '</time>';
+			echo '<time class="vtc-tp-day-date" datetime="' . esc_attr( $ymd ) . '">' . esc_html( wp_date( 'j F Y', $day_ts ) ) . '</time>';
 			echo '</div>';
 			echo '</div>';
 
