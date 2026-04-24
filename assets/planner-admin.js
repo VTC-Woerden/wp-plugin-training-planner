@@ -39,6 +39,8 @@
 	var SNAP = 15;
 	var DEFAULT_LEN = 90;
 	var TOTAL_MIN = (HOUR_END - HOUR_START) * 60;
+	/** Blokkades langer dan dit (minuten) bepalen de gecropte as niet; bedoeld voor "hele dag" sloten. */
+	var UNAVAIL_EXCLUDE_FROM_AXIS_IF_LONGER_MIN = 12 * 60;
 	var WORK_MODE_KEY = 'vtcTpWorkMode';
 	var SCHEDULE_VIEW_KEY = 'vtcTpScheduleView';
 	var ISO_WEEK_KEY = 'vtcTpIsoWeek';
@@ -373,22 +375,80 @@
 		return (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm;
 	}
 
-	function minRel(m) {
-		return m - HOUR_START * 60;
+	/**
+	 * Zaal/veld (inhuur) in de blauwdruk: volle 08–23-tijdlijn. Teamrooster: gecropt per dag.
+	 */
+	function isInhuurFullGrid() {
+		return state.workMode === 'inhuur' && !isWeekScope();
 	}
 
-	function slotStyleLeftPct(start) {
-		return (minRel(timeToMin(start)) / TOTAL_MIN) * 100;
+	/**
+	 * Per-dag start + span in minuten: teamrooster begint na de laatst eindigende
+	 * onbeschikbaarheid (alle velden) op die dag, anders 08:00.
+	 */
+	function getDayTimeAxis(dow) {
+		if (isInhuurFullGrid()) {
+			return { start: HOUR_START * 60, span: TOTAL_MIN };
+		}
+		var maxEnd = 0;
+		((state.data && state.data.unavailability) || []).forEach(function (u) {
+			if (u.day_of_week !== dow) {
+				return;
+			}
+			var s0 = timeToMin(u.start_time);
+			var e0 = timeToMin(u.end_time);
+			if (e0 - s0 > UNAVAIL_EXCLUDE_FROM_AXIS_IF_LONGER_MIN) {
+				return;
+			}
+			if (e0 > maxEnd) {
+				maxEnd = e0;
+			}
+		});
+		var endDay = HOUR_END * 60;
+		var start;
+		if (maxEnd === 0) {
+			start = HOUR_START * 60;
+		} else {
+			start = Math.max(HOUR_START * 60, maxEnd);
+		}
+		var span = endDay - start;
+		if (span < SNAP) {
+			start = Math.max(HOUR_START * 60, endDay - SNAP);
+			span = endDay - start;
+			if (span < SNAP) {
+				span = SNAP;
+			}
+		}
+		return { start: start, span: span };
 	}
 
-	function slotStyleWidthPct(start, end) {
-		var d = timeToMin(end) - timeToMin(start);
-		return (d / TOTAL_MIN) * 100;
+	function slotStyleLeftPct(start, dow) {
+		var ax = getDayTimeAxis(dow);
+		var sm = timeToMin(start);
+		var v0 = Math.max(sm, ax.start);
+		return ((v0 - ax.start) / ax.span) * 100;
+	}
+
+	function slotStyleWidthPct(start, end, dow) {
+		var ax = getDayTimeAxis(dow);
+		var sm = timeToMin(start);
+		var em = timeToMin(end);
+		var v0 = Math.max(sm, ax.start);
+		var w = (em - v0) / ax.span * 100;
+		return w > 0 ? w : 0;
 	}
 
 	function pxPerMinFromBody(body) {
 		var w = body.getBoundingClientRect().width;
-		return w > 0 ? w / TOTAL_MIN : 1;
+		if (!w) {
+			return 1;
+		}
+		var dow = parseInt(body.getAttribute('data-dow'), 10);
+		if (isNaN(dow)) {
+			return w / TOTAL_MIN;
+		}
+		var ax = getDayTimeAxis(dow);
+		return w / (ax.span > 0 ? ax.span : TOTAL_MIN);
 	}
 
 	/**
@@ -509,16 +569,21 @@
 	function computePlacementFromPoint(body, clientX) {
 		var venueId = parseInt(body.getAttribute('data-venue-id'), 10);
 		var dow = parseInt(body.getAttribute('data-dow'), 10);
+		if (isNaN(dow)) {
+			dow = 0;
+		}
+		var ax = getDayTimeAxis(dow);
 		var rect = body.getBoundingClientRect();
 		var x = clientX - rect.left;
 		var frac = Math.max(0, Math.min(1, rect.width > 0 ? x / rect.width : 0));
-		var m = HOUR_START * 60 + frac * TOTAL_MIN;
+		var m = ax.start + frac * ax.span;
 		m = Math.round(m / SNAP) * SNAP;
+		m = Math.max(ax.start, Math.min(HOUR_END * 60 - DEFAULT_LEN, m));
 		var start = minToTime(m);
 		var end = minToTime(m + DEFAULT_LEN);
 		if (timeToMin(end) > HOUR_END * 60) {
 			end = minToTime(HOUR_END * 60);
-			start = minToTime(timeToMin(end) - DEFAULT_LEN);
+			start = minToTime(Math.max(ax.start, timeToMin(end) - DEFAULT_LEN));
 		}
 		return { venue_id: venueId, day_of_week: dow, start_time: start, end_time: end };
 	}
@@ -1074,6 +1139,11 @@
 
 	function xRangeToStartEndOnBody(refBody, xLeft, xRight) {
 		var r = refBody.getBoundingClientRect();
+		var dowR = parseInt(refBody.getAttribute('data-dow'), 10);
+		if (isNaN(dowR)) {
+			dowR = 0;
+		}
+		var ax = getDayTimeAxis(dowR);
 		var l = Math.min(xLeft, xRight);
 		var ri = Math.max(xLeft, xRight);
 		var fl = (l - r.left) / r.width;
@@ -1081,10 +1151,10 @@
 		fl = Math.max(0, Math.min(1, fl));
 		fr = Math.max(0, Math.min(1, fr));
 		if (fr <= fl) {
-			fr = Math.min(1, fl + SNAP / TOTAL_MIN);
+			fr = Math.min(1, fl + SNAP / (ax.span > 0 ? ax.span : TOTAL_MIN));
 		}
-		var mStart = HOUR_START * 60 + fl * TOTAL_MIN;
-		var mEnd = HOUR_START * 60 + fr * TOTAL_MIN;
+		var mStart = ax.start + fl * ax.span;
+		var mEnd = ax.start + fr * ax.span;
 		mStart = Math.round(mStart / SNAP) * SNAP;
 		mEnd = Math.round(mEnd / SNAP) * SNAP;
 		if (mEnd - mStart < SNAP) {
@@ -1092,8 +1162,9 @@
 		}
 		if (mEnd > HOUR_END * 60) {
 			mEnd = HOUR_END * 60;
-			mStart = Math.max(HOUR_START * 60, mEnd - SNAP);
+			mStart = Math.max(ax.start, mEnd - SNAP);
 		}
+		mStart = Math.max(ax.start, mStart);
 		return { start: minToTime(mStart), end: minToTime(mEnd) };
 	}
 
@@ -1273,20 +1344,30 @@
 			html += '<div class="vtc-tppl-day-grid"><div class="vtc-tppl-day-grid-inner">';
 			html += '<div class="vtc-tppl-corner" aria-hidden="true"></div>';
 			html += '<div class="vtc-tppl-time-ruler" aria-hidden="true">';
-			for (var hr = HOUR_START; hr < HOUR_END; hr++) {
-				var leftPct = ((hr * 60 - HOUR_START * 60) / TOTAL_MIN) * 100;
-				html += '<span class="vtc-tppl-time-tick" style="left:' + leftPct + '%">' + hr + ':00</span>';
-			}
+			(function () {
+				var ax2 = getDayTimeAxis(dow);
+				var t0 = ax2.start;
+				if (t0 % 60 > 0) {
+					t0 = (Math.floor(t0 / 60) + 1) * 60;
+				}
+				for (var tK = t0; tK < HOUR_END * 60; tK += 60) {
+					var lft = ((tK - ax2.start) / ax2.span) * 100;
+					var h2 = Math.floor(tK / 60);
+					html += '<span class="vtc-tppl-time-tick" style="left:' + lft + '%">' + h2 + ':00</span>';
+				}
+			})();
+
 			html += '</div>';
 			d.venues.forEach(function (v) {
 				html += '<div class="vtc-tppl-lane-label">' + esc(v.label) + '</div>';
 				html += '<div class="vtc-tppl-lane-body" data-venue-id="' + v.id + '" data-dow="' + dow + '">';
 				(d.unavailability || []).forEach(function (u) {
 					if (u.day_of_week !== dow || u.venue_id !== v.id) return;
+					if (slotStyleWidthPct(u.start_time, u.end_time, dow) < 0.0001) return;
 					var usel = u.id === state.selectedUnavailId ? ' is-selected' : '';
 					var unavailEditable = inhuur && !weekScope && !publishedView;
 					var unRo = !unavailEditable ? ' vtc-tppl-unavail--readonly' : '';
-					html += '<div class="vtc-tppl-unavail' + usel + unRo + '" data-unavail-id="' + u.id + '" style="left:' + slotStyleLeftPct(u.start_time) + '%;width:' + slotStyleWidthPct(u.start_time, u.end_time) + '%">';
+					html += '<div class="vtc-tppl-unavail' + usel + unRo + '" data-unavail-id="' + u.id + '" style="left:' + slotStyleLeftPct(u.start_time, dow) + '%;width:' + slotStyleWidthPct(u.start_time, u.end_time, dow) + '%">';
 					html += '<div class="vtc-tppl-unavail-handle vtc-tppl-unavail-handle--left" data-unavail-id="' + u.id + '"></div>';
 					html += '<span class="vtc-tppl-unavail-label">' + esc(u.start_time + '–' + u.end_time) + '</span>';
 					if (unavailEditable) {
@@ -1299,9 +1380,10 @@
 					var slotList = weekReadonly ? (d.baseline_slots || []) : (d.slots || []);
 					slotList.forEach(function (s) {
 						if (s.day_of_week !== dow || s.venue_id !== v.id) return;
+						if (slotStyleWidthPct(s.start_time, s.end_time, dow) < 0.0001) return;
 						var sel = !gridReadonly && state.selectedSlotIds.has(s.id) ? ' is-selected' : '';
 						var baseCls = gridReadonly ? ' vtc-tppl-block--baseline' : '';
-						html += '<div class="vtc-tppl-block' + baseCls + sel + '" data-slot-id="' + s.id + '" style="left:' + slotStyleLeftPct(s.start_time) + '%;width:' + slotStyleWidthPct(s.start_time, s.end_time) + '%;background:' + slotTeamBackground(s) + '">';
+						html += '<div class="vtc-tppl-block' + baseCls + sel + '" data-slot-id="' + s.id + '" style="left:' + slotStyleLeftPct(s.start_time, dow) + '%;width:' + slotStyleWidthPct(s.start_time, s.end_time, dow) + '%;background:' + slotTeamBackground(s) + '">';
 						if (!gridReadonly) {
 							html += '<div class="vtc-tppl-block-resize vtc-tppl-block-resize--left" data-slot-id="' + s.id + '"></div>';
 							html += '<button type="button" class="vtc-tppl-block-addteam" data-slot-id="' + s.id + '" title="' + esc(__('addTeamToSlot')) + '">+</button>';
@@ -1738,6 +1820,10 @@
 			var times = xRangeToStartEndOnBody(refBody, xMin, xMax);
 			var bodies = bodiesIntersectingRect(dayEl, xMin, yMin, xMax, yMax);
 			if (!bodies.length) bodies = [refBody];
+			var dowP = parseInt(refBody.getAttribute('data-dow'), 10);
+			if (isNaN(dowP)) {
+				dowP = 0;
+			}
 
 			var seen = new Set();
 			bodies.forEach(function (b) {
@@ -1750,8 +1836,8 @@
 					previews.set(b, pr);
 					b.classList.add('vtc-tppl-lane-painting');
 				}
-				pr.style.left = slotStyleLeftPct(times.start) + '%';
-				pr.style.width = slotStyleWidthPct(times.start, times.end) + '%';
+				pr.style.left = slotStyleLeftPct(times.start, dowP) + '%';
+				pr.style.width = slotStyleWidthPct(times.start, times.end, dowP) + '%';
 			});
 			previews.forEach(function (pr, b) {
 				if (!seen.has(b)) {
@@ -1791,7 +1877,12 @@
 				var r = refBody.getBoundingClientRect();
 				var fx = (x0 - r.left) / r.width;
 				fx = Math.max(0, Math.min(1, fx));
-				var m0 = HOUR_START * 60 + fx * TOTAL_MIN;
+				var dowA = parseInt(refBody.getAttribute('data-dow'), 10);
+				if (isNaN(dowA)) {
+					dowA = 0;
+				}
+				var axA = getDayTimeAxis(dowA);
+				var m0 = axA.start + fx * axA.span;
 				m0 = Math.round(m0 / SNAP) * SNAP;
 				times = { start: minToTime(m0), end: minToTime(m0 + SNAP) };
 			} else {
@@ -1874,8 +1965,10 @@
 		drag.u.end_time = minToTime(ne);
 		var el = document.querySelector('.vtc-tppl-unavail[data-unavail-id="' + drag.id + '"]');
 		if (el) {
-			el.style.left = slotStyleLeftPct(drag.u.start_time) + '%';
-			el.style.width = slotStyleWidthPct(drag.u.start_time, drag.u.end_time) + '%';
+			var ud = drag.u.day_of_week;
+			if (isNaN(ud)) ud = 0;
+			el.style.left = slotStyleLeftPct(drag.u.start_time, ud) + '%';
+			el.style.width = slotStyleWidthPct(drag.u.start_time, drag.u.end_time, ud) + '%';
 			var lb = el.querySelector('.vtc-tppl-unavail-label');
 			if (lb) lb.textContent = drag.u.start_time + '–' + drag.u.end_time;
 		}
@@ -1958,8 +2051,10 @@
 		}
 		var el = document.querySelector('.vtc-tppl-unavail[data-unavail-id="' + drag.id + '"]');
 		if (el) {
-			el.style.left = slotStyleLeftPct(u.start_time) + '%';
-			el.style.width = slotStyleWidthPct(u.start_time, u.end_time) + '%';
+			var udw = u.day_of_week;
+			if (isNaN(udw)) udw = 0;
+			el.style.left = slotStyleLeftPct(u.start_time, udw) + '%';
+			el.style.width = slotStyleWidthPct(u.start_time, u.end_time, udw) + '%';
 			var lb = el.querySelector('.vtc-tppl-unavail-label');
 			if (lb) lb.textContent = u.start_time + '–' + u.end_time;
 		}
@@ -2135,7 +2230,8 @@
 			var low = -1e9;
 			var high = 1e9;
 			drag.items.forEach(function (it) {
-				low = Math.max(low, HOUR_START * 60 - it.origStart);
+				var axG = getDayTimeAxis(it.slot.day_of_week);
+				low = Math.max(low, axG.start - it.origStart);
 				high = Math.min(high, HOUR_END * 60 - it.origEnd);
 			});
 			var dClamped = Math.max(low, Math.min(high, dMin));
@@ -2144,10 +2240,12 @@
 				var ne = it.origEnd + dClamped;
 				it.slot.start_time = minToTime(ns);
 				it.slot.end_time = minToTime(ne);
+				var dIt = it.slot.day_of_week;
+				if (isNaN(dIt)) dIt = 0;
 				var elg = document.querySelector('.vtc-tppl-block[data-slot-id="' + it.id + '"]');
 				if (elg) {
-					elg.style.left = slotStyleLeftPct(it.slot.start_time) + '%';
-					elg.style.width = slotStyleWidthPct(it.slot.start_time, it.slot.end_time) + '%';
+					elg.style.left = slotStyleLeftPct(it.slot.start_time, dIt) + '%';
+					elg.style.width = slotStyleWidthPct(it.slot.start_time, it.slot.end_time, dIt) + '%';
 					var tmg = elg.querySelector('.vtc-tppl-block-time');
 					if (tmg) tmg.textContent = it.slot.start_time + '–' + it.slot.end_time;
 				}
@@ -2158,17 +2256,27 @@
 			return;
 		}
 		if (drag.type === 'move') {
+			var elM = drag.blockEl;
+			var laneM = elM && elM.parentNode;
+			if (!laneM || !laneM.getAttribute) {
+				laneM = drag.body;
+			}
+			var dowB = parseInt(laneM.getAttribute('data-dow'), 10);
+			if (isNaN(dowB)) {
+				dowB = 0;
+			}
+			var axB = getDayTimeAxis(dowB);
 			var ns = drag.origStart + dMin;
 			var ne = drag.origEnd + dMin;
 			var len = drag.origEnd - drag.origStart;
-			ns = Math.max(HOUR_START * 60, Math.min(HOUR_END * 60 - len, ns));
+			ns = Math.max(axB.start, Math.min(HOUR_END * 60 - len, ns));
 			ne = ns + len;
 			slot.start_time = minToTime(ns);
 			slot.end_time = minToTime(ne);
-			var el = drag.blockEl;
+			var el = elM;
 			if (el) {
-				el.style.left = slotStyleLeftPct(slot.start_time) + '%';
-				el.style.width = slotStyleWidthPct(slot.start_time, slot.end_time) + '%';
+				el.style.left = slotStyleLeftPct(slot.start_time, dowB) + '%';
+				el.style.width = slotStyleWidthPct(slot.start_time, slot.end_time, dowB) + '%';
 				var tm = el.querySelector('.vtc-tppl-block-time');
 				if (tm) tm.textContent = slot.start_time + '–' + slot.end_time;
 			}
@@ -2177,25 +2285,30 @@
 				newBody.appendChild(el);
 			}
 		} else if (drag.type === 'resize' && drag.edge === 'left') {
+			var axL = getDayTimeAxis(slot.day_of_week);
 			var nsL = drag.origStart + dMin;
-			nsL = Math.max(HOUR_START * 60, Math.min(drag.origEnd - SNAP, nsL));
+			nsL = Math.max(axL.start, Math.min(drag.origEnd - SNAP, nsL));
 			nsL = Math.round(nsL / SNAP) * SNAP;
 			slot.start_time = minToTime(nsL);
+			var dLe = slot.day_of_week;
+			if (isNaN(dLe)) dLe = 0;
 			var elL = document.querySelector('.vtc-tppl-block[data-slot-id="' + drag.id + '"]');
 			if (elL) {
-				elL.style.left = slotStyleLeftPct(slot.start_time) + '%';
-				elL.style.width = slotStyleWidthPct(slot.start_time, slot.end_time) + '%';
+				elL.style.left = slotStyleLeftPct(slot.start_time, dLe) + '%';
+				elL.style.width = slotStyleWidthPct(slot.start_time, slot.end_time, dLe) + '%';
 				var tmL = elL.querySelector('.vtc-tppl-block-time');
 				if (tmL) tmL.textContent = slot.start_time + '–' + slot.end_time;
 			}
 		} else {
+			var dRt = slot.day_of_week;
+			if (isNaN(dRt)) dRt = 0;
 			var ne2 = drag.origEnd + dMin;
 			ne2 = Math.max(drag.origStart + SNAP, Math.min(HOUR_END * 60, ne2));
 			ne2 = Math.round(ne2 / SNAP) * SNAP;
 			slot.end_time = minToTime(ne2);
 			var el2 = document.querySelector('.vtc-tppl-block[data-slot-id="' + drag.id + '"]');
 			if (el2) {
-				el2.style.width = slotStyleWidthPct(slot.start_time, slot.end_time) + '%';
+				el2.style.width = slotStyleWidthPct(slot.start_time, slot.end_time, dRt) + '%';
 				var tm2 = el2.querySelector('.vtc-tppl-block-time');
 				if (tm2) tm2.textContent = slot.start_time + '–' + slot.end_time;
 			}
