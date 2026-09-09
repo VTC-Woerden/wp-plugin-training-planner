@@ -538,6 +538,12 @@ class VTC_TP_Public {
 		if ( isset( $ev['type'] ) && 'match' === $ev['type'] ) {
 			return '#2271b1';
 		}
+		if ( ! empty( $ev['color_hex'] ) ) {
+			$hex = VTC_TP_DB::sanitize_color_hex( $ev['color_hex'] );
+			if ( '' !== $hex ) {
+				return $hex;
+			}
+		}
 		$palette = array(
 			'#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6',
 			'#1abc9c', '#e67e22', '#2c3e50', '#e84393', '#00b894',

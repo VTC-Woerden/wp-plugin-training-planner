@@ -238,6 +238,10 @@ class VTC_TP_Schedule {
 			$venue    = $venues[ $vid ] ?? null;
 			$loc_label = $venue ? $venue->location_name : '';
 			$vtype = ( $venue && isset( $venue->venue_type ) && 'field' === $venue->venue_type ) ? __( 'Buitenveld', 'vtc-training-planner' ) : __( 'Zaal', 'vtc-training-planner' );
+			$color_hex = '';
+			if ( ! empty( $teams[ $tid ] ) ) {
+				$color_hex = VTC_TP_DB::team_color_hex_from_row( $teams[ $tid ] );
+			}
 			$events[] = array(
 				'type'           => 'training',
 				'start_ts'       => $start_dt->getTimestamp(),
@@ -249,6 +253,8 @@ class VTC_TP_Schedule {
 				'field_label'    => $venue ? $venue->name : '',
 				// Per baan (venue_id), niet alleen locatienaam — anders vallen alle velden in dezelfde zaal onder één sleutel en krijg je valse conflicten.
 				'hall_key'       => 'v:' . $vid,
+				'color_hex'      => $color_hex,
+				'team_id'        => $tid,
 			);
 		}
 

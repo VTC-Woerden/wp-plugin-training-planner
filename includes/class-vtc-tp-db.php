@@ -1081,6 +1081,37 @@ class VTC_TP_DB {
 	}
 
 	/**
+	 * Normaliseer teamkleur naar #rrggbb of lege string (fallback).
+	 *
+	 * @param mixed $raw Ruwe invoer.
+	 * @return string
+	 */
+	public static function sanitize_color_hex( $raw ) {
+		$s = strtolower( trim( (string) $raw ) );
+		if ( '' === $s ) {
+			return '';
+		}
+		if ( '#' !== substr( $s, 0, 1 ) ) {
+			$s = '#' . $s;
+		}
+		if ( ! preg_match( '/^#[0-9a-f]{6}$/', $s ) ) {
+			return '';
+		}
+		return $s;
+	}
+
+	/**
+	 * @param object|null $team Teamrij.
+	 * @return string Geldige #rrggbb of ''.
+	 */
+	public static function team_color_hex_from_row( $team ) {
+		if ( ! is_object( $team ) || ! isset( $team->color_hex ) ) {
+			return '';
+		}
+		return self::sanitize_color_hex( $team->color_hex );
+	}
+
+	/**
 	 * @param int                  $primary_team_id Hoofdteam (team_id-kolom).
 	 * @param array<int, mixed>    $input           Ruwe id-lijst uit API.
 	 * @param array<int, object>   $valid_team_ids  Set van geldige team-id's (keys = ids).
