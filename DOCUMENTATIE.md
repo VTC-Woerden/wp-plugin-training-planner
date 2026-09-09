@@ -19,7 +19,7 @@ Onder **Training**:
 | Pagina | Doel |
 |--------|------|
 | **Instellingen** | Nevobo RSS-cache (seconden), scope wedstrijden in weekoverzicht. Clubcode staat bij Stamdata. |
-| **Blauwdrukken** | Blauwdruk- en **versielabels** wijzigen, afwijkende blauwdruk **verwijderen** (incl. stamdata/rooster), ISO-weken toewijzen. |
+| **Blauwdrukken** | Blauwdruk- en **versielabels** wijzigen, **startweek roulatie** (`YYYY-Www`) per blauwdruk, afwijkende blauwdruk **verwijderen** (incl. stamdata/rooster), ISO-weken toewijzen. |
 | **Stamdata** | Vereniging (`vtc_tp_club`), teams, locaties en velden (venues). Zelfde denkmodel als de Team-app. |
 | **Rooster (visueel)** | Drag-and-drop planner (blauwdruk of gekozen ISO-week), conceptversies, publiceren. |
 | **Rooster (lijst)** | Lijstweergave van het rooster. |
@@ -48,8 +48,13 @@ Knoppen voor **voorbeeld laden** en **teams uit Team-app** vullen stamdata vanui
 
 ### Visuele planner — modi
 
-- **Teamrooster**: sleep teams vanuit de zijbalk naar een baan, of **klik op een lege baan** voor een **compact teamkiezervenster** (standaard teams met ruimte t.o.v. *trainings per week*; **Toon alle teams** voor de volledige lijst). Duur en positie met **sleep-handles**; blok **tussen velden** slepen: tijdens het slepen springt het blok mee naar de baan onder de cursor tot je **loslaat** (intern: `document`-pointerlisteners i.p.v. capture op het blok, zodat slepen na veldwissel doorloopt). Dubbelklik of × om te verwijderen waar toegestaan. Teamkiezer sluiten: **Escape** of klik buiten het venster.
+- **Teamrooster**: sleep teams vanuit de zijbalk naar een baan, of **klik op een lege baan** voor een **compact teamkiezervenster** (standaard teams met ruimte t.o.v. *trainings per week*; **Toon alle teams** voor de volledige lijst). Duur en positie met **sleep-handles**; blok **tussen velden** slepen: tijdens het slepen springt het blok mee naar de baan onder de cursor tot je **loslaat** (intern: `document`-pointerlisteners i.p.v. capture op het blok, zodat slepen na veldwissel doorloopt). Dubbelklik of × om te verwijderen waar toegestaan. Teamkiezer sluiten: **Escape** of klik buiten het venster. Op multi-team-blokken: **+** voor extra team; knop **Samen** / **Rouleren** (roulatie vereist startweek op de blauwdruk). Bij Rouleren toont de planner alle teams plus label “om de N weken”; alleen de **publieke** week toont één team per ISO-week.
 - **Zaal/veld (inhuur)**: tekent **niet-beschikbare** periodes (geen teamblokken); handig voor huur/zaalblokkades.
+
+### Multi-team en roulatie
+
+- Standaard **Samen**: alle teams op het slot tegelijk (titel met ` + `).
+- **Rouleren**: volgorde = primair team + `co_team_ids`; per ISO-week één actief team op de site, gerekend vanaf **startweek roulatie** op de blauwdruk. Zonder startweek mag Rouleren niet worden opgeslagen; op de site worden zulke slots overgeslagen.
 
 ### Week-navigatie
 

@@ -167,10 +167,17 @@
 		if (!data.unavailability) data.unavailability = [];
 		(data.slots || []).forEach(function (s) {
 			if (!Array.isArray(s.co_team_ids)) s.co_team_ids = [];
+			if (s.team_mode !== 'rotate') s.team_mode = 'together';
+			if (!s.co_team_ids.length) s.team_mode = 'together';
 		});
 		(data.baseline_slots || []).forEach(function (s) {
 			if (!Array.isArray(s.co_team_ids)) s.co_team_ids = [];
+			if (s.team_mode !== 'rotate') s.team_mode = 'together';
+			if (!s.co_team_ids.length) s.team_mode = 'together';
 		});
+		if (typeof data.rotation_anchor_iso_week !== 'string') {
+			data.rotation_anchor_iso_week = '';
+		}
 		state.data = data;
 		state.lastLoadError = null;
 		// Alleen in blauwdruk-modus server-blauwdruk overnemen; weekweergave toont effectieve BP en mag je keuze voor het blauwdruk-tabblad niet overschrijven.
@@ -473,29 +480,47 @@
 		return null;
 	}
 
+	function slotTeamIds(s) {
+		var ids = [s.team_id];
+		(s.co_team_ids || []).forEach(function (id) {
+			id = parseInt(id, 10);
+			if (id && ids.indexOf(id) === -1) ids.push(id);
+		});
+		return ids;
+	}
+
+	function hasRotationAnchor() {
+		var a = state.data && state.data.rotation_anchor_iso_week;
+		return !!(a && String(a).trim());
+	}
+
+	function slotRotateLabel(s) {
+		var n = slotTeamIds(s).length;
+		if (n < 2 || s.team_mode !== 'rotate') return '';
+		return __('rotateEveryN').replace('%d', String(n));
+	}
+
+	function toggleSlotTeamMode(slotId) {
+		var slot = findSlot(slotId);
+		if (!slot || slotTeamIds(slot).length < 2) return;
+		var next = slot.team_mode === 'rotate' ? 'together' : 'rotate';
+		if (next === 'rotate' && !hasRotationAnchor()) {
+			showToast(__('rotateNeedsAnchor'), false);
+			return;
+		}
+		recordSlotChange(slotId, { team_mode: next });
+		slot.team_mode = next;
+		markDirty();
+		render();
+		showToast(next === 'rotate' ? __('teamModeSetRotate') : __('teamModeSetTogether'), true);
+	}
+
 	function teamColor(id) {
 		var t = findTeam(id);
 		if (t && t.color_hex && /^#[0-9a-fA-F]{6}$/.test(String(t.color_hex))) {
 			return String(t.color_hex).toLowerCase();
 		}
 		return TEAM_COLORS[Math.abs(id) % TEAM_COLORS.length];
-	}
-
-	function slotTeamIds(s) {
-		var ids = [s.team_id];
-		(s.co_team_ids || []).forEach(function (id) {
-			ids.push(id);
-		});
-		var out = [];
-		var seen = {};
-		ids.forEach(function (id) {
-			var n = parseInt(id, 10);
-			if (!seen[n]) {
-				seen[n] = true;
-				out.push(n);
-			}
-		});
-		return out;
 	}
 
 	function slotTeamBackground(s) {
@@ -686,6 +711,7 @@
 			id: tid,
 			team_id: teamId,
 			co_team_ids: [],
+			team_mode: 'together',
 			venue_id: state.teamPickerVenueId,
 			day_of_week: state.teamPickerDow,
 			start_time: state.teamPickerStart,
@@ -952,6 +978,7 @@
 							body: JSON.stringify(withBlueprintBody({
 								team_id: s.team_id,
 								co_team_ids: Array.isArray(s.co_team_ids) ? s.co_team_ids : [],
+								team_mode: s.team_mode === 'rotate' ? 'rotate' : 'together',
 								venue_id: s.venue_id,
 								day_of_week: s.day_of_week,
 								start_time: s.start_time,
@@ -1032,6 +1059,7 @@
 									exception_week_id: ewid,
 									team_id: s.team_id,
 									co_team_ids: Array.isArray(s.co_team_ids) ? s.co_team_ids : [],
+									team_mode: s.team_mode === 'rotate' ? 'rotate' : 'together',
 									venue_id: s.venue_id,
 									day_of_week: s.day_of_week,
 									start_time: s.start_time,
@@ -1306,6 +1334,14 @@
 		}
 		html += '</div>';
 		html += '<p id="vtc-tppl-dirty-banner" class="vtc-tppl-dirty-banner" hidden>' + esc(__('dirtyBanner')) + '</p>';
+		if (!inhuur && !hasRotationAnchor()) {
+			var hasRotateSlot = (d.slots || []).some(function (s) {
+				return s.team_mode === 'rotate' && slotTeamIds(s).length > 1;
+			});
+			if (hasRotateSlot) {
+				html += '<p class="vtc-tppl-draft-banner">' + esc(__('rotateNoAnchorBanner')) + '</p>';
+			}
+		}
 		if (weekScope) {
 			html += '<p class="vtc-tppl-help">' + esc(__('weekHelp')) + '</p>';
 			if (d.uses_deviation_blueprint && !d.has_exception) {
@@ -1387,13 +1423,23 @@
 						if (slotStyleWidthPct(s.start_time, s.end_time, dow) < 0.0001) return;
 						var sel = !gridReadonly && state.selectedSlotIds.has(s.id) ? ' is-selected' : '';
 						var baseCls = gridReadonly ? ' vtc-tppl-block--baseline' : '';
-						html += '<div class="vtc-tppl-block' + baseCls + sel + '" data-slot-id="' + s.id + '" style="left:' + slotStyleLeftPct(s.start_time, dow) + '%;width:' + slotStyleWidthPct(s.start_time, s.end_time, dow) + '%;background:' + slotTeamBackground(s) + '">';
+						var multi = slotTeamIds(s).length > 1;
+						var rotateCls = multi && s.team_mode === 'rotate' ? ' vtc-tppl-block--rotate' : '';
+						html += '<div class="vtc-tppl-block' + baseCls + rotateCls + sel + '" data-slot-id="' + s.id + '" style="left:' + slotStyleLeftPct(s.start_time, dow) + '%;width:' + slotStyleWidthPct(s.start_time, s.end_time, dow) + '%;background:' + slotTeamBackground(s) + '">';
 						if (!gridReadonly) {
 							html += '<div class="vtc-tppl-block-resize vtc-tppl-block-resize--left" data-slot-id="' + s.id + '"></div>';
+							if (multi) {
+								var modeLabel = s.team_mode === 'rotate' ? __('teamModeRotate') : __('teamModeTogether');
+								html += '<button type="button" class="vtc-tppl-block-mode" data-slot-id="' + s.id + '" title="' + esc(__('teamModeToggleTitle')) + '">' + esc(modeLabel) + '</button>';
+							}
 							html += '<button type="button" class="vtc-tppl-block-addteam" data-slot-id="' + s.id + '" title="' + esc(__('addTeamToSlot')) + '">+</button>';
 							html += '<button type="button" class="vtc-tppl-block-x" data-slot-id="' + s.id + '" title="' + esc(__('deleteSlot')) + '">&times;</button>';
 						}
 						html += '<span class="vtc-tppl-block-title">' + esc(s.team_name) + '</span>';
+						var rotLbl = slotRotateLabel(s);
+						if (rotLbl) {
+							html += '<span class="vtc-tppl-block-rotate-label">' + esc(rotLbl) + '</span>';
+						}
 						html += '<span class="vtc-tppl-block-time">' + esc(s.start_time + '–' + s.end_time) + '</span>';
 						if (!gridReadonly) {
 							html += '<div class="vtc-tppl-block-resize vtc-tppl-block-resize--right" data-slot-id="' + s.id + '"></div>';
@@ -1696,6 +1742,13 @@
 					var sid = parseInt(btn.getAttribute('data-slot-id'), 10);
 					openCoTeamPicker(sid, e.clientX, e.clientY);
 					render();
+				});
+			});
+			root.querySelectorAll('.vtc-tppl-block-mode').forEach(function (btn) {
+				btn.addEventListener('click', function (e) {
+					e.stopPropagation();
+					e.preventDefault();
+					toggleSlotTeamMode(parseInt(btn.getAttribute('data-slot-id'), 10));
 				});
 			});
 			root.querySelectorAll('.vtc-tppl-block-x').forEach(function (btn) {
@@ -2105,7 +2158,7 @@
 	}
 
 	function onBlockPointerDown(e) {
-		if (e.target.closest('.vtc-tppl-block-x') || e.target.closest('.vtc-tppl-block-addteam') || e.target.closest('.vtc-tppl-block-resize')) return;
+		if (e.target.closest('.vtc-tppl-block-x') || e.target.closest('.vtc-tppl-block-addteam') || e.target.closest('.vtc-tppl-block-mode') || e.target.closest('.vtc-tppl-block-resize')) return;
 		var block = e.currentTarget;
 		var id = parseInt(block.getAttribute('data-slot-id'), 10);
 		var multi = e.ctrlKey || e.metaKey;
@@ -2395,6 +2448,7 @@
 			id: tid,
 			team_id: teamId,
 			co_team_ids: [],
+			team_mode: 'together',
 			venue_id: place.venue_id,
 			day_of_week: place.day_of_week,
 			start_time: place.start_time,

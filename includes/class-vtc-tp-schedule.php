@@ -178,9 +178,10 @@ class VTC_TP_Schedule {
 	 * Expand slot rows to concrete events with start/end timestamps for the ISO week.
 	 *
 	 * @param array<int, object> $slots
+	 * @param bool               $apply_team_rotation Alleen true op publieke site.
 	 * @return array<int, array<string, mixed>>
 	 */
-	public function expand_slots_to_events( $iso_week, array $slots, $blueprint_id_for_stamdata ) {
+	public function expand_slots_to_events( $iso_week, array $slots, $blueprint_id_for_stamdata, $apply_team_rotation = false ) {
 		$norm = self::normalize_iso_week( $iso_week );
 		if ( ! $norm || ! preg_match( '/^(\d{4})-W(\d{2})$/', $norm, $m ) ) {
 			return array();
@@ -204,6 +205,11 @@ class VTC_TP_Schedule {
 			$venues[ (int) $v->id ] = $v;
 		}
 
+		$bp_row = $this->db->get_blueprint( $bp_id );
+		$anchor = ( $bp_row && ! empty( $bp_row->rotation_anchor_iso_week ) )
+			? self::normalize_iso_week( (string) $bp_row->rotation_anchor_iso_week )
+			: null;
+
 		$events = array();
 		foreach ( $slots as $slot ) {
 			$dow = self::normalize_day_of_week_team( $slot->day_of_week );
@@ -224,6 +230,22 @@ class VTC_TP_Schedule {
 			$co_ids   = VTC_TP_DB::parse_co_team_ids_from_row( $slot );
 			$title_ids = array_merge( array( $tid ), $co_ids );
 			$title_ids = array_values( array_unique( array_map( 'intval', $title_ids ) ) );
+
+			$mode = VTC_TP_DB::team_mode_from_row( $slot );
+			if ( $apply_team_rotation && 'rotate' === $mode && count( $title_ids ) > 1 ) {
+				if ( ! $anchor ) {
+					continue;
+				}
+				$idx = self::iso_week_index_from_anchor( $anchor, $norm );
+				if ( null === $idx ) {
+					continue;
+				}
+				$n = count( $title_ids );
+				$active = $title_ids[ ( ( $idx % $n ) + $n ) % $n ];
+				$title_ids = array( $active );
+				$tid       = $active;
+			}
+
 			$titles   = array();
 			foreach ( $title_ids as $id ) {
 				if ( ! empty( $teams[ $id ] ) && isset( $teams[ $id ]->display_name ) ) {
@@ -266,6 +288,28 @@ class VTC_TP_Schedule {
 		);
 
 		return $events;
+	}
+
+	/**
+	 * Hele ISO-weken vanaf anker tot target (0 op ankerweek). Negatief vóór anker; modulo elders.
+	 *
+	 * @return int|null
+	 */
+	public static function iso_week_index_from_anchor( $anchor_iso, $target_iso ) {
+		$a = self::normalize_iso_week( $anchor_iso );
+		$t = self::normalize_iso_week( $target_iso );
+		if ( ! $a || ! $t || ! preg_match( '/^(\d{4})-W(\d{2})$/', $a, $ma ) || ! preg_match( '/^(\d{4})-W(\d{2})$/', $t, $mt ) ) {
+			return null;
+		}
+		$tz = wp_timezone();
+		try {
+			$mon_a = ( new DateTimeImmutable( 'now', $tz ) )->setISODate( (int) $ma[1], (int) $ma[2], 1 );
+			$mon_t = ( new DateTimeImmutable( 'now', $tz ) )->setISODate( (int) $mt[1], (int) $mt[2], 1 );
+		} catch ( Exception $e ) {
+			return null;
+		}
+		$diff_days = (int) $mon_a->diff( $mon_t )->format( '%r%a' );
+		return (int) floor( $diff_days / 7 );
 	}
 
 	/**
@@ -468,13 +512,13 @@ class VTC_TP_Schedule {
 	 *
 	 * @return array{events: array, iso_week: string, used_exceptions: bool}
 	 */
-	public function get_merged_week( $iso_week, VTC_TP_Nevobo $nevobo ) {
+	public function get_merged_week( $iso_week, VTC_TP_Nevobo $nevobo, $apply_team_rotation = false ) {
 		$norm = self::normalize_iso_week( $iso_week ) ?: self::current_iso_week();
 
 		$bp_eff = $this->db->get_effective_blueprint_id_for_iso_week( $norm );
 		$slots  = $this->get_effective_slots_for_week( $norm );
 		$ex     = $this->db->get_exception_week( $bp_eff, $norm );
-		$train  = $this->expand_slots_to_events( $norm, $slots, $bp_eff );
+		$train  = $this->expand_slots_to_events( $norm, $slots, $bp_eff, $apply_team_rotation );
 
 		$code = $this->db->get_nevobo_code();
 		$raw  = $nevobo->get_club_schedule_matches( $code );
@@ -523,7 +567,7 @@ class VTC_TP_Schedule {
 		if ( ! $prev_iso ) {
 			return $events;
 		}
-		$prev  = $this->get_merged_week( $prev_iso, $nevobo );
+		$prev  = $this->get_merged_week( $prev_iso, $nevobo, true );
 		$extra = array();
 		foreach ( $prev['events'] as $ev ) {
 			$d = ( new DateTimeImmutable( '@' . (int) $ev['start_ts'] ) )->setTimezone( $tz )->format( 'Y-m-d' );

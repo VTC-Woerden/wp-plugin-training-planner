@@ -137,6 +137,14 @@ class VTC_TP_Admin {
 						'teamOverviewClose' => __( 'Sluiten', 'vtc-training-planner' ),
 						'teamOverviewChipTitle' => __( 'Gepland / nodig', 'vtc-training-planner' ),
 						'teamOverviewLaneHelp' => __( 'Klik op een lege baan: kies een team; de training komt op die tijd en plek. Of sleep een team vanuit de zijbalk.', 'vtc-training-planner' ),
+						'teamModeTogether' => __( 'Samen', 'vtc-training-planner' ),
+						'teamModeRotate' => __( 'Rouleren', 'vtc-training-planner' ),
+						'teamModeToggleTitle' => __( 'Samen trainen of om de beurt (roulatie)', 'vtc-training-planner' ),
+						'rotateEveryN' => __( 'om de %d weken', 'vtc-training-planner' ),
+						'rotateNeedsAnchor' => __( 'Stel eerst een startweek voor roulatie in onder Blauwdrukken.', 'vtc-training-planner' ),
+						'rotateNoAnchorBanner' => __( 'Er zijn roulerende slots, maar deze blauwdruk heeft geen startweek. Vul die in onder Blauwdrukken voordat je publiceert.', 'vtc-training-planner' ),
+						'teamModeSetTogether' => __( 'Modus: samen.', 'vtc-training-planner' ),
+						'teamModeSetRotate' => __( 'Modus: rouleren.', 'vtc-training-planner' ),
 					),
 				)
 			);
@@ -590,8 +598,33 @@ class VTC_TP_Admin {
 						++$ok;
 					}
 				}
+				$anchors = isset( $_POST['blueprint_rotation_anchors'] ) && is_array( $_POST['blueprint_rotation_anchors'] )
+					? wp_unslash( $_POST['blueprint_rotation_anchors'] )
+					: array();
+				$anchor_ok = 0;
+				$anchor_err = 0;
+				foreach ( $anchors as $bid => $iso ) {
+					$bid = absint( $bid );
+					if ( $bid < 1 || ! $this->db->get_blueprint( $bid ) ) {
+						continue;
+					}
+					$iso = sanitize_text_field( is_string( $iso ) ? $iso : '' );
+					if ( '' !== $iso && ! VTC_TP_Schedule::normalize_iso_week( $iso ) ) {
+						++$anchor_err;
+						continue;
+					}
+					if ( $this->db->update_blueprint_rotation_anchor( $bid, $iso ) ) {
+						++$anchor_ok;
+					}
+				}
 				if ( $ok > 0 ) {
 					add_settings_error( 'vtc_tp', 'bp_names', __( 'Blauwdruknamen opgeslagen.', 'vtc-training-planner' ), 'success' );
+				}
+				if ( $anchor_ok > 0 ) {
+					add_settings_error( 'vtc_tp', 'bp_anchors', __( 'Startweken voor roulatie opgeslagen.', 'vtc-training-planner' ), 'success' );
+				}
+				if ( $anchor_err > 0 ) {
+					add_settings_error( 'vtc_tp', 'bp_anchors_bad', __( 'Een of meer startweken zijn ongeldig (gebruik bv. 2026-W12).', 'vtc-training-planner' ), 'error' );
 				}
 				break;
 
@@ -680,7 +713,7 @@ class VTC_TP_Admin {
 				<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
 				<input type="hidden" name="vtc_tp_action" value="save_blueprint_names" />
 			</form>
-			<table class="widefat striped"><thead><tr><th><?php esc_html_e( 'Naam', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Type', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Stamdata / rooster', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Acties', 'vtc-training-planner' ); ?></th></tr></thead><tbody>
+			<table class="widefat striped"><thead><tr><th><?php esc_html_e( 'Naam', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Type', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Startweek roulatie', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Stamdata / rooster', 'vtc-training-planner' ); ?></th><th><?php esc_html_e( 'Acties', 'vtc-training-planner' ); ?></th></tr></thead><tbody>
 			<?php foreach ( $bps as $b ) : ?>
 				<tr>
 					<td>
@@ -688,6 +721,11 @@ class VTC_TP_Admin {
 						<input form="<?php echo esc_attr( $bp_names_form_id ); ?>" id="bp-name-<?php echo (int) $b->id; ?>" class="regular-text" name="blueprint_names[<?php echo (int) $b->id; ?>]" value="<?php echo esc_attr( $b->name ); ?>" required />
 					</td>
 					<td><?php echo (int) $b->kind === VTC_TP_DB::KIND_DEVIATION ? esc_html__( 'Afwijkend', 'vtc-training-planner' ) : esc_html__( 'Basis', 'vtc-training-planner' ); ?></td>
+					<td>
+						<label class="screen-reader-text" for="bp-rot-<?php echo (int) $b->id; ?>"><?php esc_html_e( 'Startweek roulatie', 'vtc-training-planner' ); ?></label>
+						<input form="<?php echo esc_attr( $bp_names_form_id ); ?>" id="bp-rot-<?php echo (int) $b->id; ?>" class="regular-text" name="blueprint_rotation_anchors[<?php echo (int) $b->id; ?>]" value="<?php echo esc_attr( ! empty( $b->rotation_anchor_iso_week ) ? (string) $b->rotation_anchor_iso_week : '' ); ?>" placeholder="2026-W01" pattern="\d{4}-W\d{2}" />
+						<p class="description" style="margin:4px 0 0;"><?php esc_html_e( 'Verplicht voor “Rouleren” op multi-team-slots. Leeg = geen roulatie.', 'vtc-training-planner' ); ?></p>
+					</td>
 					<td><a href="<?php echo esc_url( admin_url( 'admin.php?page=vtc-training-stamdata&blueprint_id=' . (int) $b->id ) ); ?>"><?php esc_html_e( 'Stamdata', 'vtc-training-planner' ); ?></a>
 						· <a href="<?php echo esc_url( admin_url( 'admin.php?page=vtc-training-planner-visual' ) ); ?>#bp=<?php echo (int) $b->id; ?>"><?php esc_html_e( 'Rooster (visueel)', 'vtc-training-planner' ); ?></a></td>
 					<td>
@@ -705,7 +743,7 @@ class VTC_TP_Admin {
 				</tr>
 			<?php endforeach; ?>
 			</tbody></table>
-			<p><button type="submit" class="button button-primary" form="<?php echo esc_attr( $bp_names_form_id ); ?>"><?php esc_html_e( 'Namen opslaan', 'vtc-training-planner' ); ?></button></p>
+			<p><button type="submit" class="button button-primary" form="<?php echo esc_attr( $bp_names_form_id ); ?>"><?php esc_html_e( 'Namen en startweken opslaan', 'vtc-training-planner' ); ?></button></p>
 
 			<?php
 			$ver_labels_form_id = 'vtc-tp-version-labels';

@@ -732,6 +732,45 @@
 	background: rgba(255, 255, 255, 0.4);
 }
 
+.vtc-tppl-block-mode {
+	position: absolute;
+	top: 1px;
+	right: 42px;
+	max-width: 56px;
+	height: 18px;
+	padding: 0 4px;
+	line-height: 16px;
+	text-align: center;
+	border: none;
+	border-radius: 3px;
+	background: rgba(0, 0, 0, 0.35);
+	color: #fff;
+	font-size: 9px;
+	font-weight: 600;
+	cursor: pointer;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.vtc-tppl-block-mode:hover {
+	background: rgba(0, 0, 0, 0.5);
+}
+
+.vtc-tppl-block--rotate .vtc-tppl-block-mode {
+	background: rgba(255, 255, 255, 0.35);
+	color: #1d2327;
+}
+
+.vtc-tppl-block-rotate-label {
+	display: block;
+	font-size: 9px;
+	font-weight: 600;
+	opacity: 0.95;
+	line-height: 1.15;
+	margin-top: 1px;
+}
+
 .vtc-tppl-coteam-picker-head {
 	padding: 8px 10px 6px;
 	font-size: 12px;

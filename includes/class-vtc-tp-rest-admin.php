@@ -304,6 +304,7 @@ class VTC_TP_Rest_Admin {
 			'id'            => (int) $s->id,
 			'team_id'       => $tid,
 			'co_team_ids'   => $co,
+			'team_mode'     => VTC_TP_DB::team_mode_from_row( $s ),
 			'venue_id'      => $vid,
 			'day_of_week'   => (int) $s->day_of_week,
 			'start_time'    => $s->start_time,
@@ -397,6 +398,7 @@ class VTC_TP_Rest_Admin {
 				'blueprint_kind'          => $brow ? (int) $brow->kind : 0,
 				'parent_base_id'          => $brow && $brow->parent_base_id ? (int) $brow->parent_base_id : null,
 				'editing_version_id'      => $brow && $brow->editing_version_id ? (int) $brow->editing_version_id : null,
+				'rotation_anchor_iso_week'=> ( $brow && ! empty( $brow->rotation_anchor_iso_week ) ) ? (string) $brow->rotation_anchor_iso_week : '',
 				'published_version_id'    => $this->db->get_published_version_id_for_blueprint( $bp ),
 				'versions'                => $versions_out,
 				'deviation_weeks'         => $this->db->list_deviation_weeks_for_blueprint( $bp ),
@@ -421,7 +423,8 @@ class VTC_TP_Rest_Admin {
 			return new WP_Error( 'bad_week', __( 'Ongeldige ISO-week (gebruik bv. 2026-W12).', 'vtc-training-planner' ), array( 'status' => 400 ) );
 		}
 
-		$bp = $this->db->get_effective_blueprint_id_for_iso_week( $norm );
+		$bp    = $this->db->get_effective_blueprint_id_for_iso_week( $norm );
+		$bweek = $this->db->get_blueprint( $bp );
 
 		$teams  = $this->db->get_teams( $bp );
 		$venues = $this->db->get_venues_for_blueprint( $bp );
@@ -526,6 +529,7 @@ class VTC_TP_Rest_Admin {
 				'unavailability'            => $out_un,
 				'exception_weeks'           => $ew_list,
 				'draft_differs'             => $this->db->draft_differs_from_published( $bp ),
+				'rotation_anchor_iso_week'  => ( $bweek && ! empty( $bweek->rotation_anchor_iso_week ) ) ? (string) $bweek->rotation_anchor_iso_week : '',
 			)
 		);
 	}
@@ -595,8 +599,12 @@ class VTC_TP_Rest_Admin {
 		if ( isset( $params['co_team_ids'] ) && is_array( $params['co_team_ids'] ) ) {
 			$co_arr = VTC_TP_DB::normalize_co_team_ids_input( $tid, $params['co_team_ids'], $team_ok );
 		}
+		$mode = $this->resolve_team_mode_for_write( $bp, $params, 'together', $co_arr );
+		if ( is_wp_error( $mode ) ) {
+			return $mode;
+		}
 		$co_json = VTC_TP_DB::co_team_ids_to_db_value( $co_arr );
-		$new_id  = $this->db->insert_exception_slot( $ewid, $tid, $vid, $dow, $st, $en, $co_json );
+		$new_id  = $this->db->insert_exception_slot( $ewid, $tid, $vid, $dow, $st, $en, $co_json, $mode );
 		$row     = $this->db->get_exception_slot_row( $new_id );
 		return $this->exception_slot_response( $row, $bp );
 	}
@@ -664,6 +672,21 @@ class VTC_TP_Rest_Admin {
 				VTC_TP_DB::normalize_co_team_ids_input( $primary, $existing, $team_ok )
 			);
 		}
+		$co_for_mode = array_key_exists( 'co_team_ids', $fields )
+			? VTC_TP_DB::parse_co_team_ids_from_row( (object) array( 'co_team_ids' => $fields['co_team_ids'] ) )
+			: VTC_TP_DB::parse_co_team_ids_from_row( $meta );
+		if ( isset( $params['team_mode'] ) || array_key_exists( 'co_team_ids', $fields ) ) {
+			$mode = $this->resolve_team_mode_for_write(
+				$bp,
+				$params,
+				VTC_TP_DB::team_mode_from_row( $meta ),
+				$co_for_mode
+			);
+			if ( is_wp_error( $mode ) ) {
+				return $mode;
+			}
+			$fields['team_mode'] = $mode;
+		}
 		if ( empty( $fields ) ) {
 			$row = $this->db->get_exception_slot_row( $sid );
 			return $this->exception_slot_response( $row, $bp );
@@ -709,8 +732,12 @@ class VTC_TP_Rest_Admin {
 		if ( isset( $params['co_team_ids'] ) && is_array( $params['co_team_ids'] ) ) {
 			$co_arr = VTC_TP_DB::normalize_co_team_ids_input( $tid, $params['co_team_ids'], $team_ok );
 		}
+		$mode = $this->resolve_team_mode_for_write( $bp, $params, 'together', $co_arr );
+		if ( is_wp_error( $mode ) ) {
+			return $mode;
+		}
 		$co_json = VTC_TP_DB::co_team_ids_to_db_value( $co_arr );
-		$new_id  = $this->db->insert_slot_draft( $bp, $tid, $vid, $dow, $st, $en, $co_json );
+		$new_id  = $this->db->insert_slot_draft( $bp, $tid, $vid, $dow, $st, $en, $co_json, $mode );
 		$row     = $this->db->get_slot_draft( $new_id );
 		if ( ! $row || (int) $row->blueprint_id !== $bp ) {
 			return new WP_Error( 'insert_fail', __( 'Opslaan mislukt.', 'vtc-training-planner' ), array( 'status' => 500 ) );
@@ -783,6 +810,21 @@ class VTC_TP_Rest_Admin {
 			$fields['co_team_ids'] = VTC_TP_DB::co_team_ids_to_db_value(
 				VTC_TP_DB::normalize_co_team_ids_input( $primary, $existing, $team_ok )
 			);
+		}
+		$co_for_mode = array_key_exists( 'co_team_ids', $fields )
+			? VTC_TP_DB::parse_co_team_ids_from_row( (object) array( 'co_team_ids' => $fields['co_team_ids'] ) )
+			: VTC_TP_DB::parse_co_team_ids_from_row( $row );
+		if ( isset( $params['team_mode'] ) || array_key_exists( 'co_team_ids', $fields ) ) {
+			$mode = $this->resolve_team_mode_for_write(
+				$bp,
+				$params,
+				VTC_TP_DB::team_mode_from_row( $row ),
+				$co_for_mode
+			);
+			if ( is_wp_error( $mode ) ) {
+				return $mode;
+			}
+			$fields['team_mode'] = $mode;
 		}
 		if ( empty( $fields ) ) {
 			return $this->slot_response( $row, $bp );
@@ -1053,6 +1095,37 @@ class VTC_TP_Rest_Admin {
 			'start_time'    => $row->start_time,
 			'end_time'      => $row->end_time,
 		);
+	}
+
+	/**
+	 * @param int                  $bp       Blueprint id.
+	 * @param array<string, mixed> $params   Request body.
+	 * @param string               $fallback Existing mode when team_mode omitted.
+	 * @param array<int, int>      $co_arr   Co-teams after write (empty = force together).
+	 * @return string|WP_Error
+	 */
+	private function resolve_team_mode_for_write( $bp, array $params, $fallback, array $co_arr ) {
+		if ( count( $co_arr ) < 1 ) {
+			return 'together';
+		}
+		$mode = isset( $params['team_mode'] )
+			? VTC_TP_DB::sanitize_team_mode( $params['team_mode'] )
+			: VTC_TP_DB::sanitize_team_mode( $fallback );
+		if ( 'rotate' !== $mode ) {
+			return 'together';
+		}
+		$brow   = $this->db->get_blueprint( (int) $bp );
+		$anchor = ( $brow && ! empty( $brow->rotation_anchor_iso_week ) )
+			? VTC_TP_Schedule::normalize_iso_week( (string) $brow->rotation_anchor_iso_week )
+			: null;
+		if ( ! $anchor ) {
+			return new WP_Error(
+				'no_rotation_anchor',
+				__( 'Stel eerst een startweek voor roulatie in op de blauwdruk (Blauwdrukken).', 'vtc-training-planner' ),
+				array( 'status' => 400 )
+			);
+		}
+		return 'rotate';
 	}
 
 	private function exception_slot_response( $row, $bp ) {
