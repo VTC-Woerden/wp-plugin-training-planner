@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class VTC_TP_Activator {
 
-	const DB_VERSION = '5';
+	const DB_VERSION = '6';
 
 	/**
 	 * Run on plugin activation.
@@ -40,6 +40,7 @@ class VTC_TP_Activator {
 				kind tinyint(3) unsigned NOT NULL DEFAULT 0,
 				parent_base_id bigint(20) unsigned DEFAULT NULL,
 				editing_version_id bigint(20) unsigned DEFAULT NULL,
+				rotation_anchor_iso_week varchar(12) NOT NULL DEFAULT '',
 				created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				PRIMARY KEY  (id),
 				KEY kind (kind),
@@ -273,6 +274,10 @@ class VTC_TP_Activator {
 			self::migrate_schema_v5( $p );
 		}
 
+		if ( version_compare( (string) $current, '6', '<' ) ) {
+			self::migrate_schema_v6( $p );
+		}
+
 		update_option( 'vtc_tp_db_version', self::DB_VERSION );
 	}
 
@@ -394,6 +399,24 @@ class VTC_TP_Activator {
 		$t_table = "{$p}vtc_tp_team";
 		if ( ! self::column_exists( $t_table, 'color_hex' ) ) {
 			$wpdb->query( "ALTER TABLE {$t_table} ADD COLUMN color_hex varchar(7) NOT NULL DEFAULT ''" );
+		}
+	}
+
+	/**
+	 * Roulatie: startweek op blauwdruk + team_mode op slots.
+	 *
+	 * @param string $p Table prefix.
+	 */
+	private static function migrate_schema_v6( $p ) {
+		global $wpdb;
+		$bp = "{$p}vtc_tp_blueprint";
+		if ( ! self::column_exists( $bp, 'rotation_anchor_iso_week' ) ) {
+			$wpdb->query( "ALTER TABLE {$bp} ADD COLUMN rotation_anchor_iso_week varchar(12) NOT NULL DEFAULT ''" );
+		}
+		foreach ( array( "{$p}vtc_tp_slot_draft", "{$p}vtc_tp_slot_published", "{$p}vtc_tp_exception_slot" ) as $tbl ) {
+			if ( ! self::column_exists( $tbl, 'team_mode' ) ) {
+				$wpdb->query( "ALTER TABLE {$tbl} ADD COLUMN team_mode varchar(16) NOT NULL DEFAULT 'together'" );
+			}
 		}
 	}
 

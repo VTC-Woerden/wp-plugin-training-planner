@@ -228,6 +228,38 @@ class VTC_TP_DB {
 	}
 
 	/**
+	 * Start-ISO-week voor teamroulatie (leeg = niet gezet).
+	 *
+	 * @param int         $blueprint_id Blueprint id.
+	 * @param string|null $iso_week     YYYY-Www of leeg om te wissen.
+	 * @return bool
+	 */
+	public function update_blueprint_rotation_anchor( $blueprint_id, $iso_week ) {
+		$blueprint_id = (int) $blueprint_id;
+		if ( $blueprint_id < 1 || ! $this->get_blueprint( $blueprint_id ) ) {
+			return false;
+		}
+		$iso = is_string( $iso_week ) ? trim( $iso_week ) : '';
+		if ( '' !== $iso ) {
+			$norm = VTC_TP_Schedule::normalize_iso_week( $iso );
+			if ( ! $norm ) {
+				return false;
+			}
+			$iso = $norm;
+		}
+		global $wpdb;
+		$p   = $wpdb->prefix;
+		$res = $wpdb->update(
+			"{$p}vtc_tp_blueprint",
+			array( 'rotation_anchor_iso_week' => $iso ),
+			array( 'id' => $blueprint_id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+		return false !== $res;
+	}
+
+	/**
 	 * Verwijdert een afwijkende blauwdruk en alle gekoppelde data. De basis-blauwdruk kan niet worden verwijderd.
 	 *
 	 * @param int $blueprint_id Alleen kind = afwijkend.
@@ -789,6 +821,9 @@ class VTC_TP_DB {
 				$pub['co_team_ids'] = $row->co_team_ids;
 				$pfmt[]             = '%s';
 			}
+			$mode = self::sanitize_team_mode( isset( $row->team_mode ) ? $row->team_mode : 'together' );
+			$pub['team_mode'] = $mode;
+			$pfmt[]           = '%s';
 			$wpdb->insert( "{$p}vtc_tp_slot_published", $pub, $pfmt );
 		}
 		$wpdb->query( $wpdb->prepare( "UPDATE {$p}vtc_tp_blueprint_version SET is_published = 0 WHERE blueprint_id = %d", (int) $blueprint_id ) );
@@ -822,6 +857,7 @@ class VTC_TP_DB {
 					array(
 						$r->team_id,
 						isset( $r->co_team_ids ) ? (string) $r->co_team_ids : '',
+						isset( $r->team_mode ) ? (string) $r->team_mode : 'together',
 						$r->venue_id,
 						$r->day_of_week,
 						$r->start_time,
@@ -851,7 +887,7 @@ class VTC_TP_DB {
 	public function update_slot_draft( $slot_id, array $fields ) {
 		global $wpdb;
 		$p     = $wpdb->prefix;
-		$allow = array( 'team_id', 'venue_id', 'day_of_week', 'start_time', 'end_time', 'co_team_ids' );
+		$allow = array( 'team_id', 'venue_id', 'day_of_week', 'start_time', 'end_time', 'co_team_ids', 'team_mode' );
 		$data  = array();
 		$fmt   = array();
 		foreach ( $allow as $k ) {
@@ -875,7 +911,7 @@ class VTC_TP_DB {
 	 * @return int insert id
 	 * @param string|null $co_team_ids_json JSON-array van extra team-id's, of null.
 	 */
-	public function insert_slot_draft( $blueprint_id, $team_id, $venue_id, $day_of_week, $start_time, $end_time, $co_team_ids_json = null ) {
+	public function insert_slot_draft( $blueprint_id, $team_id, $venue_id, $day_of_week, $start_time, $end_time, $co_team_ids_json = null, $team_mode = 'together' ) {
 		global $wpdb;
 		$p   = $wpdb->prefix;
 		$vid = $this->get_editing_version_id_for_blueprint( (int) $blueprint_id );
@@ -890,8 +926,9 @@ class VTC_TP_DB {
 			'day_of_week'          => min( 6, max( 0, (int) $day_of_week ) ),
 			'start_time'           => $start_time,
 			'end_time'             => $end_time,
+			'team_mode'            => self::sanitize_team_mode( $team_mode ),
 		);
-		$fmt = array( '%d', '%d', '%d', '%d', '%d', '%s', '%s' );
+		$fmt = array( '%d', '%d', '%d', '%d', '%d', '%s', '%s', '%s' );
 		if ( null !== $co_team_ids_json && '' !== $co_team_ids_json ) {
 			$ins['co_team_ids'] = $co_team_ids_json;
 			$fmt[]              = '%s';
@@ -953,7 +990,8 @@ class VTC_TP_DB {
 				(int) $r->day_of_week,
 				(string) $r->start_time,
 				(string) $r->end_time,
-				isset( $r->co_team_ids ) ? $r->co_team_ids : null
+				isset( $r->co_team_ids ) ? $r->co_team_ids : null,
+				isset( $r->team_mode ) ? $r->team_mode : 'together'
 			);
 		}
 	}
@@ -1000,7 +1038,7 @@ class VTC_TP_DB {
 	 * @param string|null $co_team_ids_json JSON-array of extra team ids.
 	 * @return int insert id
 	 */
-	public function insert_exception_slot( $exception_week_id, $team_id, $venue_id, $day_of_week, $start_time, $end_time, $co_team_ids_json = null ) {
+	public function insert_exception_slot( $exception_week_id, $team_id, $venue_id, $day_of_week, $start_time, $end_time, $co_team_ids_json = null, $team_mode = 'together' ) {
 		global $wpdb;
 		$p = $wpdb->prefix;
 		$ins = array(
@@ -1010,8 +1048,9 @@ class VTC_TP_DB {
 			'day_of_week'       => min( 6, max( 0, (int) $day_of_week ) ),
 			'start_time'        => $start_time,
 			'end_time'          => $end_time,
+			'team_mode'         => self::sanitize_team_mode( $team_mode ),
 		);
-		$fmt = array( '%d', '%d', '%d', '%d', '%s', '%s' );
+		$fmt = array( '%d', '%d', '%d', '%d', '%s', '%s', '%s' );
 		if ( null !== $co_team_ids_json && '' !== $co_team_ids_json ) {
 			$ins['co_team_ids'] = $co_team_ids_json;
 			$fmt[]              = '%s';
@@ -1027,7 +1066,7 @@ class VTC_TP_DB {
 	public function update_exception_slot( $slot_id, array $fields ) {
 		global $wpdb;
 		$p     = $wpdb->prefix;
-		$allow = array( 'team_id', 'venue_id', 'day_of_week', 'start_time', 'end_time', 'co_team_ids' );
+		$allow = array( 'team_id', 'venue_id', 'day_of_week', 'start_time', 'end_time', 'co_team_ids', 'team_mode' );
 		$data  = array();
 		$fmt   = array();
 		foreach ( $allow as $k ) {
@@ -1054,6 +1093,22 @@ class VTC_TP_DB {
 		global $wpdb;
 		$p = $wpdb->prefix;
 		return $wpdb->delete( "{$p}vtc_tp_exception_slot", array( 'id' => (int) $slot_id ), array( '%d' ) );
+	}
+
+	public static function sanitize_team_mode( $raw ) {
+		$m = is_string( $raw ) ? strtolower( trim( $raw ) ) : '';
+		return ( 'rotate' === $m ) ? 'rotate' : 'together';
+	}
+
+	/**
+	 * @param object|null $row Slot row.
+	 * @return string together|rotate
+	 */
+	public static function team_mode_from_row( $row ) {
+		if ( ! is_object( $row ) || ! isset( $row->team_mode ) ) {
+			return 'together';
+		}
+		return self::sanitize_team_mode( $row->team_mode );
 	}
 
 	/**

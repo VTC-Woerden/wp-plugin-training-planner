@@ -67,7 +67,7 @@ class VTC_TP_Public {
 			$week = VTC_TP_Schedule::current_iso_week_public_calendar();
 		}
 		wp_enqueue_style( 'vtc-tp-public' );
-		$data = $this->schedule->get_merged_week( $week, $this->nevobo );
+		$data = $this->schedule->get_merged_week( $week, $this->nevobo, true );
 		$data = $this->with_public_week_event_bridge( $data );
 		return self::render_week_html( $data, false, self::week_nav_config( $data['iso_week'], $lock_week ) );
 	}
@@ -114,7 +114,7 @@ class VTC_TP_Public {
 			$week = VTC_TP_Schedule::current_iso_week_public_calendar();
 		}
 		wp_enqueue_style( 'vtc-tp-public' );
-		$data = $this->schedule->get_merged_week( $week, $this->nevobo );
+		$data = $this->schedule->get_merged_week( $week, $this->nevobo, true );
 		$data = $this->with_public_week_event_bridge( $data );
 
 		return self::render_week_html( $data, false, self::week_nav_config( $data['iso_week'], $lock_week ) );
@@ -152,7 +152,7 @@ class VTC_TP_Public {
 		if ( ! $week ) {
 			return new WP_Error( 'bad_week', __( 'Ongeldige week', 'vtc-training-planner' ), array( 'status' => 400 ) );
 		}
-		$data = $this->schedule->get_merged_week( $week, $this->nevobo );
+		$data = $this->schedule->get_merged_week( $week, $this->nevobo, true );
 		return rest_ensure_response(
 			array(
 				'iso_week'                 => $data['iso_week'],
@@ -172,7 +172,7 @@ class VTC_TP_Public {
 		if ( ! $week ) {
 			return new WP_Error( 'bad_week', __( 'Ongeldige week', 'vtc-training-planner' ), array( 'status' => 400 ) );
 		}
-		$data = $this->schedule->get_merged_week( $week, $this->nevobo );
+		$data = $this->schedule->get_merged_week( $week, $this->nevobo, true );
 		$data = $this->with_public_week_event_bridge( $data );
 		$html = self::get_week_calendar_html( $data, false, true );
 		$prev      = VTC_TP_Schedule::shift_iso_week( $data['iso_week'], -1 );
