@@ -360,8 +360,9 @@ class VTC_TP_Admin {
 						'trainings_per_week'     => max( 0, absint( $_POST['trainings_per_week'] ?? 2 ) ),
 						'min_training_minutes'   => max( 1, absint( $_POST['min_training_minutes'] ?? 90 ) ),
 						'max_training_minutes'   => max( 1, absint( $_POST['max_training_minutes'] ?? 90 ) ),
+						'color_hex'              => VTC_TP_DB::sanitize_color_hex( wp_unslash( $_POST['color_hex'] ?? '' ) ),
 					),
-					array( '%d', '%s', '%s', '%d', '%d', '%d', '%d', '%d' )
+					array( '%d', '%s', '%s', '%d', '%d', '%d', '%d', '%d', '%s' )
 				);
 				add_settings_error( 'vtc_tp', 'team_add', __( 'Team toegevoegd.', 'vtc-training-planner' ), 'success' );
 				break;
@@ -391,9 +392,10 @@ class VTC_TP_Admin {
 							'trainings_per_week'     => max( 0, absint( $row['trainings_per_week'] ?? 2 ) ),
 							'min_training_minutes'   => max( 1, absint( $row['min_training_minutes'] ?? 90 ) ),
 							'max_training_minutes'   => max( 1, absint( $row['max_training_minutes'] ?? 90 ) ),
+							'color_hex'              => VTC_TP_DB::sanitize_color_hex( $row['color_hex'] ?? '' ),
 						),
 						array( 'id' => $tid ),
-						array( '%s', '%s', '%d', '%d', '%d' ),
+						array( '%s', '%s', '%d', '%d', '%d', '%s' ),
 						array( '%d' )
 					);
 				}
@@ -902,7 +904,7 @@ class VTC_TP_Admin {
 			</form>
 
 			<h2><?php esc_html_e( 'Teams', 'vtc-training-planner' ); ?></h2>
-			<p class="description"><?php esc_html_e( 'Komt overeen met teams in Team: display_name, nevobo_team_type (bv. dames-senioren, jongens-a), trainings per week, min/max minuten. Lijst is alfabetisch op weergavenaam.', 'vtc-training-planner' ); ?></p>
+			<p class="description"><?php esc_html_e( 'Komt overeen met teams in Team: display_name, nevobo_team_type (bv. dames-senioren, jongens-a), trainings per week, min/max minuten, optionele hex-kleur voor de planner. Lijst is alfabetisch op weergavenaam.', 'vtc-training-planner' ); ?></p>
 			<?php
 			$teams_save_form_id = 'vtc-tp-teams-save';
 			?>
@@ -919,23 +921,33 @@ class VTC_TP_Admin {
 						<th><?php esc_html_e( 'Tr/wk', 'vtc-training-planner' ); ?></th>
 						<th><?php esc_html_e( 'Min', 'vtc-training-planner' ); ?></th>
 						<th><?php esc_html_e( 'Max', 'vtc-training-planner' ); ?></th>
+						<th><?php esc_html_e( 'Kleur', 'vtc-training-planner' ); ?></th>
 						<th><?php esc_html_e( 'Actie', 'vtc-training-planner' ); ?></th>
 					</tr>
 				</thead>
 				<tbody>
 				<?php foreach ( $teams as $t ) : ?>
+					<?php
+					$color_hex = VTC_TP_DB::team_color_hex_from_row( $t );
+					$picker_val = $color_hex ? $color_hex : '#e74c3c';
+					$tid        = (int) $t->id;
+					?>
 					<tr>
-						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo (int) $t->id; ?>][display_name]" value="<?php echo esc_attr( $t->display_name ); ?>" class="regular-text" required /></td>
-						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo (int) $t->id; ?>][nevobo_team_type]" value="<?php echo esc_attr( $t->nevobo_team_type ?? '' ); ?>" class="regular-text" /></td>
-						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo (int) $t->id; ?>][trainings_per_week]" type="number" min="0" value="<?php echo (int) $t->trainings_per_week; ?>" style="width:3.5rem" /></td>
-						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo (int) $t->id; ?>][min_training_minutes]" type="number" min="1" value="<?php echo (int) ( $t->min_training_minutes ?? 90 ); ?>" style="width:4rem" /></td>
-						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo (int) $t->id; ?>][max_training_minutes]" type="number" min="1" value="<?php echo (int) ( $t->max_training_minutes ?? 90 ); ?>" style="width:4rem" /></td>
+						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo $tid; ?>][display_name]" value="<?php echo esc_attr( $t->display_name ); ?>" class="regular-text" required /></td>
+						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo $tid; ?>][nevobo_team_type]" value="<?php echo esc_attr( $t->nevobo_team_type ?? '' ); ?>" class="regular-text" /></td>
+						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo $tid; ?>][trainings_per_week]" type="number" min="0" value="<?php echo (int) $t->trainings_per_week; ?>" style="width:3.5rem" /></td>
+						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo $tid; ?>][min_training_minutes]" type="number" min="1" value="<?php echo (int) ( $t->min_training_minutes ?? 90 ); ?>" style="width:4rem" /></td>
+						<td><input form="<?php echo esc_attr( $teams_save_form_id ); ?>" name="teams[<?php echo $tid; ?>][max_training_minutes]" type="number" min="1" value="<?php echo (int) ( $t->max_training_minutes ?? 90 ); ?>" style="width:4rem" /></td>
+						<td class="vtc-tp-team-color-cell">
+							<input type="color" class="vtc-tp-team-color-picker" value="<?php echo esc_attr( $picker_val ); ?>" data-vtc-tp-color-for="teams-<?php echo $tid; ?>-color" title="<?php esc_attr_e( 'Kleur kiezen', 'vtc-training-planner' ); ?>" />
+							<input form="<?php echo esc_attr( $teams_save_form_id ); ?>" id="teams-<?php echo $tid; ?>-color" name="teams[<?php echo $tid; ?>][color_hex]" value="<?php echo esc_attr( $color_hex ); ?>" class="vtc-tp-team-color-hex" placeholder="#RRGGBB" pattern="^#?[0-9A-Fa-f]{6}$" maxlength="7" style="width:6.5rem" />
+						</td>
 						<td>
 							<form method="post" class="vtc-tp-inline-delete" onsubmit="return confirm('<?php echo esc_js( __( 'Team verwijderen?', 'vtc-training-planner' ) ); ?>');">
 								<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
 								<input type="hidden" name="vtc_tp_action" value="delete_team" />
 								<input type="hidden" name="blueprint_id" value="<?php echo (int) $bp; ?>" />
-								<input type="hidden" name="team_id" value="<?php echo (int) $t->id; ?>" />
+								<input type="hidden" name="team_id" value="<?php echo $tid; ?>" />
 								<button type="submit" class="button button-link-delete"><?php esc_html_e( 'Verwijderen', 'vtc-training-planner' ); ?></button>
 							</form>
 						</td>
@@ -956,8 +968,30 @@ class VTC_TP_Admin {
 				<input name="trainings_per_week" type="number" min="0" value="2" style="width:3.5rem" title="<?php esc_attr_e( 'Trainings per week', 'vtc-training-planner' ); ?>" />
 				<input name="min_training_minutes" type="number" min="1" value="90" style="width:4rem" />
 				<input name="max_training_minutes" type="number" min="1" value="90" style="width:4rem" />
+				<span class="vtc-tp-team-color-cell">
+					<input type="color" class="vtc-tp-team-color-picker" value="#e74c3c" data-vtc-tp-color-for="vtc-tp-add-team-color" title="<?php esc_attr_e( 'Kleur kiezen', 'vtc-training-planner' ); ?>" />
+					<input id="vtc-tp-add-team-color" name="color_hex" value="" class="vtc-tp-team-color-hex" placeholder="#RRGGBB" pattern="^#?[0-9A-Fa-f]{6}$" maxlength="7" style="width:6.5rem" />
+				</span>
 				<?php submit_button( __( 'Team toevoegen', 'vtc-training-planner' ), 'secondary', '', false ); ?>
 			</form>
+			<script>
+			(function () {
+				function syncPicker(picker) {
+					var id = picker.getAttribute('data-vtc-tp-color-for');
+					var hex = id ? document.getElementById(id) : null;
+					if (!hex) return;
+					picker.addEventListener('input', function () {
+						hex.value = picker.value;
+					});
+					hex.addEventListener('input', function () {
+						var v = String(hex.value || '').trim();
+						if (v && v.charAt(0) !== '#') v = '#' + v;
+						if (/^#[0-9A-Fa-f]{6}$/.test(v)) picker.value = v.toLowerCase();
+					});
+				}
+				document.querySelectorAll('.vtc-tp-team-color-picker').forEach(syncPicker);
+			})();
+			</script>
 
 			<h2><?php esc_html_e( 'Locaties en velden', 'vtc-training-planner' ); ?></h2>
 			<?php if ( count( $locs ) === 0 ) : ?>

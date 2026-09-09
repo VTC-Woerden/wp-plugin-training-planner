@@ -474,6 +474,10 @@
 	}
 
 	function teamColor(id) {
+		var t = findTeam(id);
+		if (t && t.color_hex && /^#[0-9a-fA-F]{6}$/.test(String(t.color_hex))) {
+			return String(t.color_hex).toLowerCase();
+		}
 		return TEAM_COLORS[Math.abs(id) % TEAM_COLORS.length];
 	}
 

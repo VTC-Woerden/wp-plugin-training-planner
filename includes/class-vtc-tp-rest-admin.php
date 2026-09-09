@@ -354,6 +354,7 @@ class VTC_TP_Rest_Admin {
 				'id'                   => (int) $t->id,
 				'display_name'         => $t->display_name,
 				'trainings_per_week'   => (int) $t->trainings_per_week,
+				'color_hex'            => VTC_TP_DB::team_color_hex_from_row( $t ),
 			);
 		}
 		$venues_out = array();
@@ -440,6 +441,7 @@ class VTC_TP_Rest_Admin {
 				'id'                   => (int) $t->id,
 				'display_name'         => $t->display_name,
 				'trainings_per_week'   => (int) $t->trainings_per_week,
+				'color_hex'            => VTC_TP_DB::team_color_hex_from_row( $t ),
 			);
 		}
 		$venues_out = array();

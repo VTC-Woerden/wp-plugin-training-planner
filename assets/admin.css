@@ -6,6 +6,22 @@
 	align-items: center;
 }
 
+.vtc-tp-wrap .vtc-tp-team-color-cell {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	white-space: nowrap;
+}
+
+.vtc-tp-wrap .vtc-tp-team-color-picker {
+	width: 2rem;
+	height: 2rem;
+	padding: 0;
+	border: 1px solid #c3c4c7;
+	background: #fff;
+	cursor: pointer;
+}
+
 .vtc-tp-wrap .vtc-tp-slot-form {
 	margin-top: 1rem;
 	display: flex;

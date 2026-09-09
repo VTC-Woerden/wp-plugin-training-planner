@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class VTC_TP_Activator {
 
-	const DB_VERSION = '4';
+	const DB_VERSION = '5';
 
 	/**
 	 * Run on plugin activation.
@@ -74,6 +74,7 @@ class VTC_TP_Activator {
 				trainings_per_week int(11) NOT NULL DEFAULT 2,
 				min_training_minutes int(11) NOT NULL DEFAULT 90,
 				max_training_minutes int(11) NOT NULL DEFAULT 90,
+				color_hex varchar(7) NOT NULL DEFAULT '',
 				created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				PRIMARY KEY  (id),
 				KEY blueprint_id (blueprint_id)
@@ -245,6 +246,7 @@ class VTC_TP_Activator {
 			'nevobo_number'        => 'ALTER TABLE %s ADD COLUMN nevobo_number int(11) NOT NULL DEFAULT 1',
 			'min_training_minutes' => 'ALTER TABLE %s ADD COLUMN min_training_minutes int(11) NOT NULL DEFAULT 90',
 			'max_training_minutes' => 'ALTER TABLE %s ADD COLUMN max_training_minutes int(11) NOT NULL DEFAULT 90',
+			'color_hex'            => 'ALTER TABLE %s ADD COLUMN color_hex varchar(7) NOT NULL DEFAULT \'\'',
 		);
 		$t_table = "{$p}vtc_tp_team";
 		foreach ( $team_cols as $col => $sql ) {
@@ -265,6 +267,10 @@ class VTC_TP_Activator {
 
 		if ( version_compare( (string) $current, '4', '<' ) ) {
 			self::migrate_schema_v4( $p );
+		}
+
+		if ( version_compare( (string) $current, '5', '<' ) ) {
+			self::migrate_schema_v5( $p );
 		}
 
 		update_option( 'vtc_tp_db_version', self::DB_VERSION );
@@ -375,6 +381,19 @@ class VTC_TP_Activator {
 				continue;
 			}
 			$wpdb->query( "ALTER TABLE {$tbl} ADD COLUMN co_team_ids text NULL" );
+		}
+	}
+
+	/**
+	 * Vaste teamkleur (hex) op stamdata-teams.
+	 *
+	 * @param string $p Table prefix.
+	 */
+	private static function migrate_schema_v5( $p ) {
+		global $wpdb;
+		$t_table = "{$p}vtc_tp_team";
+		if ( ! self::column_exists( $t_table, 'color_hex' ) ) {
+			$wpdb->query( "ALTER TABLE {$t_table} ADD COLUMN color_hex varchar(7) NOT NULL DEFAULT ''" );
 		}
 	}
 
