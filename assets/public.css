@@ -348,14 +348,19 @@
 }
 
 /* Kantel-instructie op smalle schermen in portrait (VTC-4). */
-.vtc-tp-rotate-toggle,
+/* !important omdat themaregels als `#top input[type="checkbox"]` (Enfold) een
+   klasseselector verslaan; deze checkbox mag nooit zichtbaar worden. */
+.vtc-tp-rotate-toggle {
+	display: none !important;
+}
+
 .vtc-tp-rotate-hint {
 	display: none;
 }
 
 @media (orientation: portrait) and (max-width: 600px) {
 	.vtc-tp-rotate-toggle {
-		display: block;
+		display: block !important;
 		position: absolute;
 		width: 1px;
 		height: 1px;
