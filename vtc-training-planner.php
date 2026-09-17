@@ -16,10 +16,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'VTC_TP_VERSION', '0.2.40' );
+define( 'VTC_TP_VERSION', '0.2.41' );
 define( 'VTC_TP_FILE', __FILE__ );
 define( 'VTC_TP_DIR', plugin_dir_path( __FILE__ ) );
 define( 'VTC_TP_URL', plugin_dir_url( __FILE__ ) );
+/** Capability: rooster/planner bewerken (administrator + editor). */
+define( 'VTC_TP_CAP_PLANNER', 'vtc_tp_manage_planner' );
 
 require_once VTC_TP_DIR . 'includes/class-vtc-tp-activator.php';
 require_once VTC_TP_DIR . 'includes/class-vtc-tp-db.php';
@@ -31,6 +33,7 @@ require_once VTC_TP_DIR . 'public/class-vtc-tp-public.php';
 
 register_activation_hook( __FILE__, array( 'VTC_TP_Activator', 'activate' ) );
 add_action( 'plugins_loaded', array( 'VTC_TP_Activator', 'upgrade_schema' ), 5 );
+add_action( 'plugins_loaded', array( 'VTC_TP_Activator', 'ensure_capabilities' ), 6 );
 
 /**
  * Bootstrap plugin.

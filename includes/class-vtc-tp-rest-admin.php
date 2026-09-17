@@ -223,7 +223,7 @@ class VTC_TP_Rest_Admin {
 	}
 
 	public function can_manage() {
-		return current_user_can( 'manage_options' );
+		return current_user_can( VTC_TP_CAP_PLANNER );
 	}
 
 	/**

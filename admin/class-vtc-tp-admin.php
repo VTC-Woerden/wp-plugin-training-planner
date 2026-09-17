@@ -152,23 +152,76 @@ class VTC_TP_Admin {
 	}
 
 	public function menu() {
-		$cap = 'manage_options';
+		$cap_planner = VTC_TP_CAP_PLANNER;
+		$cap_admin   = 'manage_options';
+
+		// Parent zichtbaar voor editors; landingspagina = visuele planner.
 		add_menu_page(
 			__( 'Training', 'vtc-training-planner' ),
 			__( 'Training', 'vtc-training-planner' ),
-			$cap,
-			'vtc-training-planner',
-			array( $this, 'render_settings' ),
+			$cap_planner,
+			'vtc-training-planner-visual',
+			array( $this, 'render_planner_visual' ),
 			'dashicons-calendar-alt',
 			58
 		);
-		add_submenu_page( 'vtc-training-planner', __( 'Instellingen', 'vtc-training-planner' ), __( 'Instellingen', 'vtc-training-planner' ), $cap, 'vtc-training-planner', array( $this, 'render_settings' ) );
-		add_submenu_page( 'vtc-training-planner', __( 'Blauwdrukken', 'vtc-training-planner' ), __( 'Blauwdrukken', 'vtc-training-planner' ), $cap, 'vtc-training-blueprints', array( $this, 'render_blueprints' ) );
-		add_submenu_page( 'vtc-training-planner', __( 'Stamdata', 'vtc-training-planner' ), __( 'Stamdata', 'vtc-training-planner' ), $cap, 'vtc-training-stamdata', array( $this, 'render_stamdata' ) );
-		add_submenu_page( 'vtc-training-planner', __( 'Rooster (visueel)', 'vtc-training-planner' ), __( 'Rooster (visueel)', 'vtc-training-planner' ), $cap, 'vtc-training-planner-visual', array( $this, 'render_planner_visual' ) );
-		add_submenu_page( 'vtc-training-planner', __( 'Rooster (lijst)', 'vtc-training-planner' ), __( 'Rooster (lijst)', 'vtc-training-planner' ), $cap, 'vtc-training-rooster', array( $this, 'render_rooster' ) );
-		add_submenu_page( 'vtc-training-planner', __( 'Uitzonderingsweken', 'vtc-training-planner' ), __( 'Uitzonderingsweken', 'vtc-training-planner' ), $cap, 'vtc-training-exceptions', array( $this, 'render_exceptions' ) );
-		add_submenu_page( 'vtc-training-planner', __( 'Weekoverzicht', 'vtc-training-planner' ), __( 'Weekoverzicht', 'vtc-training-planner' ), $cap, 'vtc-training-week', array( $this, 'render_week_preview' ) );
+		add_submenu_page(
+			'vtc-training-planner-visual',
+			__( 'Rooster (visueel)', 'vtc-training-planner' ),
+			__( 'Rooster (visueel)', 'vtc-training-planner' ),
+			$cap_planner,
+			'vtc-training-planner-visual',
+			array( $this, 'render_planner_visual' )
+		);
+		add_submenu_page(
+			'vtc-training-planner-visual',
+			__( 'Rooster (lijst)', 'vtc-training-planner' ),
+			__( 'Rooster (lijst)', 'vtc-training-planner' ),
+			$cap_planner,
+			'vtc-training-rooster',
+			array( $this, 'render_rooster' )
+		);
+		add_submenu_page(
+			'vtc-training-planner-visual',
+			__( 'Uitzonderingsweken', 'vtc-training-planner' ),
+			__( 'Uitzonderingsweken', 'vtc-training-planner' ),
+			$cap_planner,
+			'vtc-training-exceptions',
+			array( $this, 'render_exceptions' )
+		);
+		add_submenu_page(
+			'vtc-training-planner-visual',
+			__( 'Weekoverzicht', 'vtc-training-planner' ),
+			__( 'Weekoverzicht', 'vtc-training-planner' ),
+			$cap_planner,
+			'vtc-training-week',
+			array( $this, 'render_week_preview' )
+		);
+		// Alleen beheerders: instellingen, blauwdrukken, stamdata.
+		add_submenu_page(
+			'vtc-training-planner-visual',
+			__( 'Instellingen', 'vtc-training-planner' ),
+			__( 'Instellingen', 'vtc-training-planner' ),
+			$cap_admin,
+			'vtc-training-planner',
+			array( $this, 'render_settings' )
+		);
+		add_submenu_page(
+			'vtc-training-planner-visual',
+			__( 'Blauwdrukken', 'vtc-training-planner' ),
+			__( 'Blauwdrukken', 'vtc-training-planner' ),
+			$cap_admin,
+			'vtc-training-blueprints',
+			array( $this, 'render_blueprints' )
+		);
+		add_submenu_page(
+			'vtc-training-planner-visual',
+			__( 'Stamdata', 'vtc-training-planner' ),
+			__( 'Stamdata', 'vtc-training-planner' ),
+			$cap_admin,
+			'vtc-training-stamdata',
+			array( $this, 'render_stamdata' )
+		);
 	}
 
 	private function bp() {
@@ -213,17 +266,35 @@ class VTC_TP_Admin {
 	}
 
 	public function handle_post() {
-		if ( ! isset( $_POST['vtc_tp_action'] ) || ! current_user_can( 'manage_options' ) ) {
+		if ( ! isset( $_POST['vtc_tp_action'] ) ) {
 			return;
 		}
 		if ( ! isset( $_POST['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ), 'vtc_tp_admin' ) ) {
 			return;
 		}
 
+		$act = sanitize_text_field( wp_unslash( $_POST['vtc_tp_action'] ) );
+		$planner_actions = array(
+			'add_slot_draft',
+			'delete_slot_draft',
+			'publish_slots',
+			'add_exception_week',
+			'delete_exception_week',
+			'add_exception_slot',
+			'delete_exception_slot',
+		);
+		if ( in_array( $act, $planner_actions, true ) ) {
+			if ( ! current_user_can( VTC_TP_CAP_PLANNER ) ) {
+				return;
+			}
+		} elseif ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
 		global $wpdb;
 		$p   = $wpdb->prefix;
 		$bp  = $this->bp();
-		$act = sanitize_text_field( wp_unslash( $_POST['vtc_tp_action'] ) );
+		// $act already set above.
 
 		switch ( $act ) {
 			case 'save_settings':
@@ -685,7 +756,7 @@ class VTC_TP_Admin {
 	}
 
 	public function render_planner_visual() {
-		if ( ! current_user_can( 'manage_options' ) ) {
+		if ( ! current_user_can( VTC_TP_CAP_PLANNER ) ) {
 			return;
 		}
 		echo '<div class="wrap vtc-tp-planner-wrap"><h1>' . esc_html__( 'Rooster — visueel (blauwdruk)', 'vtc-training-planner' ) . '</h1>';
@@ -1122,6 +1193,9 @@ class VTC_TP_Admin {
 	}
 
 	public function render_rooster() {
+		if ( ! current_user_can( VTC_TP_CAP_PLANNER ) ) {
+			return;
+		}
 		settings_errors( 'vtc_tp' );
 		$bp     = $this->bp();
 		$slots  = $this->db->get_slots_draft( $bp );
@@ -1203,6 +1277,9 @@ class VTC_TP_Admin {
 	}
 
 	public function render_exceptions() {
+		if ( ! current_user_can( VTC_TP_CAP_PLANNER ) ) {
+			return;
+		}
 		$bp  = $this->bp();
 		$ews = $this->db->list_exception_weeks( $bp );
 		$teams  = $this->db->get_teams( $bp );
@@ -1296,6 +1373,9 @@ class VTC_TP_Admin {
 	}
 
 	public function render_week_preview() {
+		if ( ! current_user_can( VTC_TP_CAP_PLANNER ) ) {
+			return;
+		}
 		wp_enqueue_style( 'vtc-tp-public' );
 		$w    = isset( $_GET['week'] ) ? sanitize_text_field( wp_unslash( $_GET['week'] ) ) : VTC_TP_Schedule::current_iso_week();
 		$norm = VTC_TP_Schedule::normalize_iso_week( $w ) ?: VTC_TP_Schedule::current_iso_week();

@@ -190,6 +190,21 @@ class VTC_TP_Activator {
 		add_option( 'vtc_tp_matches_scope', 'home_halls' );
 
 		self::upgrade_schema();
+		self::ensure_capabilities();
+	}
+
+	/**
+	 * Capability voor rooster/planner: administrator + editor.
+	 * Stamdata / blauwdrukken / instellingen blijven manage_options.
+	 */
+	public static function ensure_capabilities() {
+		$cap = defined( 'VTC_TP_CAP_PLANNER' ) ? VTC_TP_CAP_PLANNER : 'vtc_tp_manage_planner';
+		foreach ( array( 'administrator', 'editor' ) as $role_name ) {
+			$role = get_role( $role_name );
+			if ( $role && ! $role->has_cap( $cap ) ) {
+				$role->add_cap( $cap );
+			}
+		}
 	}
 
 	/**
