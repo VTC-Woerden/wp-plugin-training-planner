@@ -8,7 +8,7 @@ WordPress-plugin voor **trainingsroosters** (blauwdruk + optionele uitzonderings
 
 1. Map `vtc-training-planner` in `wp-content/plugins/` plaatsen (of vanaf Git klonen).
 2. Plugin activeren in **Plugins**. Bij activatie worden database-tabellen aangemaakt (`dbDelta`) en een standaard-blauwdruk aangemaakt als die nog ontbreekt.
-3. Alleen gebruikers met **`manage_options`** (beheerders) zien het menu **Training** en mogen instellingen, stamdata en roosters wijzigen. REST-routes onder `/wp-json/vtc-tp/v1/admin/...` gebruiken dezelfde controle.
+3. Gebruikers met **`vtc_tp_manage_planner`** (standaard: **administrator** en **editor**) zien het menu **Training** en mogen roosters/planner, uitzonderingsweken en weekoverzicht bewerken. **Instellingen**, **Blauwdrukken** en **Stamdata** vereisen **`manage_options`** (alleen beheerders). Admin-REST onder `/wp-json/vtc-tp/v1/admin/...` gebruikt `vtc_tp_manage_planner`.
 
 ---
 
@@ -18,13 +18,13 @@ Onder **Training**:
 
 | Pagina | Doel |
 |--------|------|
-| **Instellingen** | Nevobo RSS-cache (seconden), scope wedstrijden in weekoverzicht. Clubcode staat bij Stamdata. |
-| **Blauwdrukken** | Blauwdruk- en **versielabels** wijzigen, **startweek roulatie** (`YYYY-Www`) per blauwdruk, afwijkende blauwdruk **verwijderen** (incl. stamdata/rooster), ISO-weken toewijzen. |
-| **Stamdata** | Vereniging (`vtc_tp_club`), teams, locaties en velden (venues). Zelfde denkmodel als de Team-app. |
-| **Rooster (visueel)** | Drag-and-drop planner (blauwdruk of gekozen ISO-week), conceptversies, publiceren. |
-| **Rooster (lijst)** | Lijstweergave van het rooster. |
-| **Uitzonderingsweken** | Beheer van weken die afwijken van de blauwdruk. |
-| **Weekoverzicht** | Voorbeeld van dezelfde data als op de site (incl. Nevobo-wedstrijden volgens instellingen). |
+| **Instellingen** | Nevobo RSS-cache (seconden), scope wedstrijden in weekoverzicht. Clubcode staat bij Stamdata. Alleen beheerders. |
+| **Blauwdrukken** | Blauwdruk- en **versielabels** wijzigen, **startweek roulatie** (`YYYY-Www`) per blauwdruk, afwijkende blauwdruk **verwijderen** (incl. stamdata/rooster), ISO-weken toewijzen. Alleen beheerders. |
+| **Stamdata** | Vereniging (`vtc_tp_club`), teams, locaties en velden (venues). Zelfde denkmodel als de Team-app. Alleen beheerders. |
+| **Rooster (visueel)** | Drag-and-drop planner (blauwdruk of gekozen ISO-week), conceptversies, publiceren. Ook voor editors. |
+| **Rooster (lijst)** | Lijstweergave van het rooster. Ook voor editors. |
+| **Uitzonderingsweken** | Beheer van weken die afwijken van de blauwdruk. Ook voor editors. |
+| **Weekoverzicht** | Voorbeeld van dezelfde data als op de site (incl. Nevobo-wedstrijden volgens instellingen). Ook voor editors. |
 
 ---
 
@@ -125,7 +125,7 @@ Dagindex in roosterdata: **0 = maandag … 6 = zondag** (Team-app-compatibel).
 
 ## Admin REST (`vtc-tp/v1/admin/...`)
 
-Alle routes vereisen ingelogde gebruiker met `manage_options`. Basis-URL: `/wp-json/vtc-tp/v1/admin/`.
+Alle routes vereisen een ingelogde gebruiker met `vtc_tp_manage_planner` (administrator of editor). Basis-URL: `/wp-json/vtc-tp/v1/admin/`.
 
 | Methode | Route | Functie |
 |---------|-------|---------|
