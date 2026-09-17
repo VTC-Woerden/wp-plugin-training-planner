@@ -304,8 +304,37 @@ class VTC_TP_Admin {
 				add_settings_error( 'vtc_tp', 'ok', __( 'Instellingen opgeslagen.', 'vtc-training-planner' ), 'success' );
 				break;
 
+			case 'refresh_nevobo_feed':
+				$code = $this->db->get_nevobo_code();
+				$probe = $this->nevobo->probe_club_feed( $code, true );
+				if ( ! empty( $probe['error'] ) && (int) $probe['item_count'] < 1 ) {
+					add_settings_error(
+						'vtc_tp',
+						'nevobo_fail',
+						sprintf(
+							/* translators: 1: error message, 2: item count */
+							__( 'Nevobo-feed vernieuwen mislukt: %1$s (items: %2$d).', 'vtc-training-planner' ),
+							$probe['error'],
+							(int) $probe['item_count']
+						),
+						'error'
+					);
+				} else {
+					add_settings_error(
+						'vtc_tp',
+						'nevobo_ok',
+						sprintf(
+							/* translators: %d: number of matches */
+							_n( 'Nevobo-feed vernieuwd: %d wedstrijd.', 'Nevobo-feed vernieuwd: %d wedstrijden.', (int) $probe['item_count'], 'vtc-training-planner' ),
+							(int) $probe['item_count']
+						),
+						'success'
+					);
+				}
+				break;
+
 			case 'save_club':
-				$old_code = strtolower( preg_replace( '/[^a-z0-9]/', '', $this->db->get_nevobo_code() ) );
+				$old_code = VTC_TP_Nevobo::normalize_club_code( $this->db->get_nevobo_code() );
 				$this->db->save_club(
 					array(
 						'name'         => wp_unslash( $_POST['club_name'] ?? '' ),
@@ -314,12 +343,12 @@ class VTC_TP_Admin {
 						'logo_url'     => wp_unslash( $_POST['club_logo_url'] ?? '' ),
 					)
 				);
-				$new_code = strtolower( preg_replace( '/[^a-z0-9]/', '', $this->db->get_nevobo_code() ) );
+				$new_code = VTC_TP_Nevobo::normalize_club_code( $this->db->get_nevobo_code() );
 				if ( $old_code ) {
-					delete_transient( 'vtc_tp_nevobo_prog_' . $old_code );
+					delete_transient( VTC_TP_Nevobo::cache_key_for_code( $old_code ) );
 				}
 				if ( $new_code ) {
-					delete_transient( 'vtc_tp_nevobo_prog_' . $new_code );
+					delete_transient( VTC_TP_Nevobo::cache_key_for_code( $new_code ) );
 				}
 				add_settings_error( 'vtc_tp', 'club', __( 'Verenigingsgegevens opgeslagen.', 'vtc-training-planner' ), 'success' );
 				break;
@@ -917,15 +946,7 @@ class VTC_TP_Admin {
 		$code  = $this->db->get_nevobo_code();
 		$ttl   = (int) get_option( 'vtc_tp_cache_ttl', 1800 );
 		$scope = get_option( 'vtc_tp_matches_scope', 'home_halls' );
-		$test  = '';
-		if ( $code ) {
-			$m = $this->nevobo->get_club_schedule_matches( $code );
-			$test = sprintf(
-				/* translators: %d: number of matches in feed */
-				_n( 'Feed bevat %d toekomstige/aankomende wedstrijd-item (na parse).', 'Feed bevat %d wedstrijd-items (na parse).', count( $m ), 'vtc-training-planner' ),
-				count( $m )
-			);
-		}
+		$probe = $code ? $this->nevobo->probe_club_feed( $code, false ) : null;
 		?>
 		<div class="wrap vtc-tp-wrap">
 			<h1><?php esc_html_e( 'Training — instellingen', 'vtc-training-planner' ); ?></h1>
@@ -948,9 +969,52 @@ class VTC_TP_Admin {
 				</table>
 				<?php submit_button(); ?>
 			</form>
-			<?php if ( $test ) : ?>
-				<p class="description"><?php echo esc_html( $test ); ?></p>
+
+			<h2><?php esc_html_e( 'Nevobo-feed status', 'vtc-training-planner' ); ?></h2>
+			<?php if ( ! $probe ) : ?>
+				<p class="description"><?php esc_html_e( 'Nog geen clubcode in Stamdata.', 'vtc-training-planner' ); ?></p>
+			<?php else : ?>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th><?php esc_html_e( 'Clubcode', 'vtc-training-planner' ); ?></th>
+						<td><code><?php echo esc_html( $probe['code'] ? strtoupper( $probe['code'] ) : '—' ); ?></code></td>
+					</tr>
+					<tr>
+						<th><?php esc_html_e( 'Feed-URL', 'vtc-training-planner' ); ?></th>
+						<td>
+							<?php if ( $probe['url'] ) : ?>
+								<a href="<?php echo esc_url( $probe['url'] ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $probe['url'] ); ?></a>
+							<?php else : ?>
+								—
+							<?php endif; ?>
+						</td>
+					</tr>
+					<tr>
+						<th><?php esc_html_e( 'Items (na parse)', 'vtc-training-planner' ); ?></th>
+						<td>
+							<strong><?php echo (int) $probe['item_count']; ?></strong>
+							<?php if ( $probe['cached'] ) : ?>
+								— <?php esc_html_e( 'uit cache', 'vtc-training-planner' ); ?>
+							<?php endif; ?>
+							<?php if ( null !== $probe['http_code'] ) : ?>
+								— HTTP <?php echo (int) $probe['http_code']; ?>
+							<?php endif; ?>
+						</td>
+					</tr>
+					<?php if ( ! empty( $probe['error'] ) ) : ?>
+						<tr>
+							<th><?php esc_html_e( 'Fout', 'vtc-training-planner' ); ?></th>
+							<td><span style="color:#b32d2e;"><?php echo esc_html( $probe['error'] ); ?></span></td>
+						</tr>
+					<?php endif; ?>
+				</table>
+				<form method="post">
+					<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
+					<input type="hidden" name="vtc_tp_action" value="refresh_nevobo_feed" />
+					<?php submit_button( __( 'Feed vernieuwen (cache legen)', 'vtc-training-planner' ), 'secondary', 'submit', false ); ?>
+				</form>
 			<?php endif; ?>
+
 			<hr />
 			<p><?php esc_html_e( 'Frontend shortcode:', 'vtc-training-planner' ); ?> <code>[vtc_training_week]</code> <?php esc_html_e( 'of met week', 'vtc-training-planner' ); ?> <code>[vtc_training_week week="2026-W15"]</code></p>
 		</div>
