@@ -19,8 +19,14 @@ jobs:
           USER: ${{ secrets.SFTP_USER }}
           PASS: ${{ secrets.SFTP_PASSWORD }}
           REMOTE_DIR: ${{ secrets.SFTP_REMOTE_DIR }}
+          METRICS_TOKEN: ${{ secrets.VTC_TP_METRICS_TOKEN }}
         run: |
           set -euo pipefail
+
+          if [ -n "${METRICS_TOKEN:-}" ]; then
+            printf '%s' "$METRICS_TOKEN" > metrics-token.bootstrap
+            echo "Wrote metrics-token.bootstrap for one-shot WP option sync"
+          fi
 
           # Exclusions: adjust to your project
           EXCLUDES="--exclude .git/ --exclude .github/ --exclude node_modules/ --exclude vendor/ --exclude .env"
@@ -32,3 +38,5 @@ jobs:
           mirror -R --only-newer --verbose $EXCLUDES ./ "$REMOTE_DIR/"
           bye
           EOF
+
+          rm -f metrics-token.bootstrap

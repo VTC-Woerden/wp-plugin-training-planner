@@ -23,7 +23,28 @@ class VTC_TP_Metrics {
 
 	public function __construct( VTC_TP_DB $db ) {
 		$this->db = $db;
+		self::maybe_bootstrap_token_from_file();
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
+	}
+
+	/**
+	 * One-shot: if metrics-token.bootstrap exists in the plugin root, store as option and delete the file.
+	 * Used by deploy to sync the Pi scrape token without putting it in git.
+	 *
+	 * @return void
+	 */
+	public static function maybe_bootstrap_token_from_file() {
+		$path = VTC_TP_DIR . 'metrics-token.bootstrap';
+		if ( ! is_readable( $path ) ) {
+			return;
+		}
+		$token = trim( (string) file_get_contents( $path ) );
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- best-effort cleanup after read.
+		@unlink( $path );
+		if ( strlen( $token ) < 16 ) {
+			return;
+		}
+		update_option( self::OPTION_TOKEN, $token, false );
 	}
 
 	/**
