@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'VTC_TP_VERSION', '0.2.41' );
+define( 'VTC_TP_VERSION', '0.2.43' );
 define( 'VTC_TP_FILE', __FILE__ );
 define( 'VTC_TP_DIR', plugin_dir_path( __FILE__ ) );
 define( 'VTC_TP_URL', plugin_dir_url( __FILE__ ) );
@@ -27,6 +27,7 @@ require_once VTC_TP_DIR . 'includes/class-vtc-tp-activator.php';
 require_once VTC_TP_DIR . 'includes/class-vtc-tp-db.php';
 require_once VTC_TP_DIR . 'includes/class-vtc-tp-nevobo.php';
 require_once VTC_TP_DIR . 'includes/class-vtc-tp-schedule.php';
+require_once VTC_TP_DIR . 'includes/class-vtc-tp-metrics.php';
 require_once VTC_TP_DIR . 'includes/class-vtc-tp-rest-admin.php';
 require_once VTC_TP_DIR . 'admin/class-vtc-tp-admin.php';
 require_once VTC_TP_DIR . 'public/class-vtc-tp-public.php';
@@ -44,6 +45,7 @@ function vtc_tp_bootstrap() {
 	$db       = new VTC_TP_DB();
 	$nevobo   = new VTC_TP_Nevobo( $db );
 	$schedule = new VTC_TP_Schedule( $db );
+	new VTC_TP_Metrics( $db );
 	new VTC_TP_Rest_Admin( $db );
 
 	if ( is_admin() ) {

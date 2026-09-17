@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class VTC_TP_Activator {
 
-	const DB_VERSION = '6';
+	const DB_VERSION = '7';
 
 	/**
 	 * Run on plugin activation.
@@ -163,6 +163,22 @@ class VTC_TP_Activator {
 				KEY exception_week_id (exception_week_id),
 				KEY team_id (team_id)
 			) $charset_collate;",
+			"CREATE TABLE {$p}vtc_tp_audit_log (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+				user_login varchar(191) NOT NULL DEFAULT '',
+				action varchar(64) NOT NULL DEFAULT '',
+				object_type varchar(64) NOT NULL DEFAULT '',
+				object_id bigint(20) unsigned DEFAULT NULL,
+				blueprint_id bigint(20) unsigned DEFAULT NULL,
+				meta longtext NULL,
+				ip varchar(64) NOT NULL DEFAULT '',
+				PRIMARY KEY  (id),
+				KEY created_at (created_at),
+				KEY action_user (action,user_login),
+				KEY user_id (user_id)
+			) $charset_collate;",
 		);
 
 		foreach ( $tables as $sql ) {
@@ -291,6 +307,10 @@ class VTC_TP_Activator {
 
 		if ( version_compare( (string) $current, '6', '<' ) ) {
 			self::migrate_schema_v6( $p );
+		}
+
+		if ( version_compare( (string) $current, '7', '<' ) ) {
+			self::migrate_schema_v7( $p, $charset_collate );
 		}
 
 		update_option( 'vtc_tp_db_version', self::DB_VERSION );
@@ -432,6 +452,38 @@ class VTC_TP_Activator {
 			if ( ! self::column_exists( $tbl, 'team_mode' ) ) {
 				$wpdb->query( "ALTER TABLE {$tbl} ADD COLUMN team_mode varchar(16) NOT NULL DEFAULT 'together'" );
 			}
+		}
+	}
+
+	/**
+	 * Audit log for Prometheus / Grafana (save actions).
+	 *
+	 * @param string $p               Table prefix.
+	 * @param string $charset_collate Collate.
+	 */
+	private static function migrate_schema_v7( $p, $charset_collate ) {
+		global $wpdb;
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta(
+			"CREATE TABLE {$p}vtc_tp_audit_log (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+				user_login varchar(191) NOT NULL DEFAULT '',
+				action varchar(64) NOT NULL DEFAULT '',
+				object_type varchar(64) NOT NULL DEFAULT '',
+				object_id bigint(20) unsigned DEFAULT NULL,
+				blueprint_id bigint(20) unsigned DEFAULT NULL,
+				meta longtext NULL,
+				ip varchar(64) NOT NULL DEFAULT '',
+				PRIMARY KEY  (id),
+				KEY created_at (created_at),
+				KEY action_user (action,user_login),
+				KEY user_id (user_id)
+			) $charset_collate;"
+		);
+		if ( ! get_option( VTC_TP_Metrics::OPTION_TOKEN, '' ) ) {
+			VTC_TP_Metrics::regenerate_token();
 		}
 	}
 
