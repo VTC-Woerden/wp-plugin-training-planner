@@ -18,7 +18,7 @@ Onder **Training**:
 
 | Pagina | Doel |
 |--------|------|
-| **Instellingen** | Nevobo RSS-cache (seconden), scope wedstrijden in weekoverzicht. Clubcode staat bij Stamdata. Alleen beheerders. |
+| **Instellingen** | Nevobo RSS-cache, wedstrijdscope, **Prometheus metrics-token** en scrape-URL’s. Clubcode staat bij Stamdata. Alleen beheerders. |
 | **Blauwdrukken** | Blauwdruk- en **versielabels** wijzigen, **startweek roulatie** (`YYYY-Www`) per blauwdruk, afwijkende blauwdruk **verwijderen** (incl. stamdata/rooster), ISO-weken toewijzen. Alleen beheerders. |
 | **Stamdata** | Vereniging (`vtc_tp_club`), teams, locaties en velden (venues). Zelfde denkmodel als de Team-app. Alleen beheerders. |
 | **Rooster (visueel)** | Drag-and-drop planner (blauwdruk of gekozen ISO-week), conceptversies, publiceren. Ook voor editors. |
@@ -118,8 +118,32 @@ Alle tabellen hebben het voorvoegsel `wp_` (of jouw `$table_prefix`).
 | `vtc_tp_venue_unavail` | Niet-beschikbaar per veld (dag + tijd) |
 | `vtc_tp_slot_draft` / `vtc_tp_slot_published` | Trainingsslots concept vs live |
 | `vtc_tp_exception_week` / `vtc_tp_exception_slot` | Uitzonderingsweken en hun slots |
+| `vtc_tp_audit_log` | Save-acties (wie/wanneer) voor metrics/Grafana |
 
 Dagindex in roosterdata: **0 = maandag … 6 = zondag** (Team-app-compatibel).
+
+---
+
+## Prometheus metrics (Grafana)
+
+Token-beveiligde endpoints (token onder **Training → Instellingen**):
+
+| Methode | Route | Functie |
+|---------|-------|---------|
+| GET | `/wp-json/vtc-tp/v1/metrics?token=…` | Prometheus text exposition |
+| GET | `/wp-json/vtc-tp/v1/metrics/audit?token=…&limit=50` | JSON recente save-acties (wie/wanneer) |
+
+Auth ook via header `Authorization: Bearer <token>`.
+
+Belangrijke series:
+
+- `vtc_tp_public_week_views_total{source}` — voorkant-raadplegingen (shortcode/block/rest)
+- `vtc_tp_save_actions_total{action,user}` / `vtc_tp_last_save_unixtime{action,user}` — saves
+- Gauges: teams, venues, draft/published slots, exception weeks, draft_differs, nevobo_feed_items, audit_log_rows
+
+Auditregels worden ~90 dagen bewaard (max ca. 5000 rijen).
+
+Voorbeeld Prometheus `scrape_configs` staat op de Instellingen-pagina.
 
 ---
 

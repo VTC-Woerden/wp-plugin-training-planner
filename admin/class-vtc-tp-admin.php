@@ -752,6 +752,55 @@ class VTC_TP_Admin {
 				$this->db->delete_deviation_week( absint( $_POST['deviation_week_id'] ?? 0 ) );
 				add_settings_error( 'vtc_tp', 'dw_del', __( 'Toewijzing verwijderd.', 'vtc-training-planner' ), 'success' );
 				break;
+
+			case 'regenerate_metrics_token':
+				$token = VTC_TP_Metrics::regenerate_token();
+				add_settings_error(
+					'vtc_tp',
+					'metrics_token',
+					sprintf(
+						/* translators: %s: new token */
+						__( 'Nieuw metrics-token gegenereerd: %s', 'vtc-training-planner' ),
+						$token
+					),
+					'success'
+				);
+				break;
+		}
+
+		$log_admin_actions = array(
+			'save_settings',
+			'save_club',
+			'save_all_teams',
+			'add_team',
+			'delete_team',
+			'add_location',
+			'delete_location',
+			'add_venue',
+			'delete_venue',
+			'add_unavail',
+			'delete_unavail',
+			'add_slot_draft',
+			'delete_slot_draft',
+			'publish_slots',
+			'add_exception_week',
+			'delete_exception_week',
+			'add_exception_slot',
+			'delete_exception_slot',
+			'save_blueprint_names',
+			'save_version_labels',
+			'add_deviation_blueprint',
+			'delete_deviation_blueprint',
+			'add_deviation_week_admin',
+			'delete_deviation_week_admin',
+		);
+		if ( in_array( $act, $log_admin_actions, true ) ) {
+			VTC_TP_Metrics::audit(
+				'admin_' . $act,
+				array(
+					'blueprint_id' => (int) $bp,
+				)
+			);
 		}
 	}
 
@@ -926,6 +975,16 @@ class VTC_TP_Admin {
 				count( $m )
 			);
 		}
+		$metrics_token = VTC_TP_Metrics::get_token();
+		$metrics_url   = add_query_arg( 'token', $metrics_token, rest_url( 'vtc-tp/v1/metrics' ) );
+		$audit_url     = add_query_arg(
+			array(
+				'token' => $metrics_token,
+				'limit' => 50,
+			),
+			rest_url( 'vtc-tp/v1/metrics/audit' )
+		);
+		$host = wp_parse_url( home_url(), PHP_URL_HOST );
 		?>
 		<div class="wrap vtc-tp-wrap">
 			<h1><?php esc_html_e( 'Training — instellingen', 'vtc-training-planner' ); ?></h1>
@@ -951,6 +1010,43 @@ class VTC_TP_Admin {
 			<?php if ( $test ) : ?>
 				<p class="description"><?php echo esc_html( $test ); ?></p>
 			<?php endif; ?>
+
+			<hr />
+			<h2><?php esc_html_e( 'Prometheus / Grafana metrics', 'vtc-training-planner' ); ?></h2>
+			<p class="description"><?php esc_html_e( 'Scrape-endpoint voor KPI’s en save-acties. Token is verplicht (query ?token= of Authorization: Bearer).', 'vtc-training-planner' ); ?></p>
+			<table class="form-table" role="presentation">
+				<tr>
+					<th><?php esc_html_e( 'Metrics-token', 'vtc-training-planner' ); ?></th>
+					<td><code style="word-break:break-all;"><?php echo esc_html( $metrics_token ); ?></code></td>
+				</tr>
+				<tr>
+					<th><?php esc_html_e( 'Prometheus URL', 'vtc-training-planner' ); ?></th>
+					<td><a href="<?php echo esc_url( $metrics_url ); ?>" target="_blank" rel="noopener noreferrer"><code style="word-break:break-all;"><?php echo esc_html( $metrics_url ); ?></code></a></td>
+				</tr>
+				<tr>
+					<th><?php esc_html_e( 'Audit JSON (wie/wanneer)', 'vtc-training-planner' ); ?></th>
+					<td><a href="<?php echo esc_url( $audit_url ); ?>" target="_blank" rel="noopener noreferrer"><code style="word-break:break-all;"><?php echo esc_html( $audit_url ); ?></code></a></td>
+				</tr>
+			</table>
+			<form method="post" style="margin-bottom:1rem;">
+				<?php wp_nonce_field( 'vtc_tp_admin' ); ?>
+				<input type="hidden" name="vtc_tp_action" value="regenerate_metrics_token" />
+				<?php submit_button( __( 'Nieuw metrics-token genereren', 'vtc-training-planner' ), 'secondary', 'submit', false ); ?>
+			</form>
+			<p><strong><?php esc_html_e( 'Voorbeeld scrape_configs (Pi / Prometheus):', 'vtc-training-planner' ); ?></strong></p>
+			<pre style="background:#f6f7f7;padding:12px;overflow:auto;max-width:100%;"><?php
+			echo esc_html(
+				"scrape_configs:\n" .
+				"  - job_name: vtc-training-planner\n" .
+				"    metrics_path: /wp-json/vtc-tp/v1/metrics\n" .
+				"    params:\n" .
+				"      token: ['" . $metrics_token . "']\n" .
+				"    static_configs:\n" .
+				"      - targets: ['" . ( $host ? $host : 'www.example.com' ) . "']\n" .
+				"    scheme: https\n"
+			);
+			?></pre>
+
 			<hr />
 			<p><?php esc_html_e( 'Frontend shortcode:', 'vtc-training-planner' ); ?> <code>[vtc_training_week]</code> <?php esc_html_e( 'of met week', 'vtc-training-planner' ); ?> <code>[vtc_training_week week="2026-W15"]</code></p>
 		</div>

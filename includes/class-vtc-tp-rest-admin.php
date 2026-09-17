@@ -552,6 +552,15 @@ class VTC_TP_Rest_Admin {
 			return new WP_Error( 'duplicate', __( 'Er bestaat al een afwijkende week voor deze ISO-week.', 'vtc-training-planner' ), array( 'status' => 409 ) );
 		}
 		$this->db->copy_slots_to_exception_week( $bp, $new_id );
+		VTC_TP_Metrics::audit(
+			'exception_week_create',
+			array(
+				'object_type'  => 'exception_week',
+				'object_id'    => (int) $new_id,
+				'blueprint_id' => (int) $bp,
+				'meta'         => array( 'iso_week' => $norm ),
+			)
+		);
 		return rest_ensure_response(
 			array(
 				'ok'                => true,
@@ -567,7 +576,16 @@ class VTC_TP_Rest_Admin {
 		if ( ! $ew || ! $this->db->get_blueprint( (int) $ew->blueprint_id ) ) {
 			return new WP_Error( 'not_found', __( 'Uitzonderingsweek niet gevonden.', 'vtc-training-planner' ), array( 'status' => 404 ) );
 		}
+		$bp = (int) $ew->blueprint_id;
 		$this->db->delete_exception_week( $eid );
+		VTC_TP_Metrics::audit(
+			'exception_week_delete',
+			array(
+				'object_type'  => 'exception_week',
+				'object_id'    => $eid,
+				'blueprint_id' => $bp,
+			)
+		);
 		return rest_ensure_response( array( 'deleted' => true, 'id' => $eid ) );
 	}
 
@@ -606,6 +624,14 @@ class VTC_TP_Rest_Admin {
 		$co_json = VTC_TP_DB::co_team_ids_to_db_value( $co_arr );
 		$new_id  = $this->db->insert_exception_slot( $ewid, $tid, $vid, $dow, $st, $en, $co_json, $mode );
 		$row     = $this->db->get_exception_slot_row( $new_id );
+		VTC_TP_Metrics::audit(
+			'exception_slot_create',
+			array(
+				'object_type'  => 'exception_slot',
+				'object_id'    => (int) $new_id,
+				'blueprint_id' => $bp,
+			)
+		);
 		return $this->exception_slot_response( $row, $bp );
 	}
 
@@ -693,6 +719,14 @@ class VTC_TP_Rest_Admin {
 		}
 		$this->db->update_exception_slot( $sid, $fields );
 		$row = $this->db->get_exception_slot_row( $sid );
+		VTC_TP_Metrics::audit(
+			'exception_slot_patch',
+			array(
+				'object_type'  => 'exception_slot',
+				'object_id'    => $sid,
+				'blueprint_id' => $bp,
+			)
+		);
 		return $this->exception_slot_response( $row, $bp );
 	}
 
@@ -702,7 +736,16 @@ class VTC_TP_Rest_Admin {
 		if ( ! $meta || ! $this->db->get_blueprint( (int) $meta->blueprint_id ) ) {
 			return new WP_Error( 'not_found', __( 'Blok niet gevonden.', 'vtc-training-planner' ), array( 'status' => 404 ) );
 		}
+		$bp = (int) $meta->blueprint_id;
 		$this->db->delete_exception_slot( $sid );
+		VTC_TP_Metrics::audit(
+			'exception_slot_delete',
+			array(
+				'object_type'  => 'exception_slot',
+				'object_id'    => $sid,
+				'blueprint_id' => $bp,
+			)
+		);
 		return rest_ensure_response( array( 'deleted' => true, 'id' => $sid ) );
 	}
 
@@ -742,6 +785,14 @@ class VTC_TP_Rest_Admin {
 		if ( ! $row || (int) $row->blueprint_id !== $bp ) {
 			return new WP_Error( 'insert_fail', __( 'Opslaan mislukt.', 'vtc-training-planner' ), array( 'status' => 500 ) );
 		}
+		VTC_TP_Metrics::audit(
+			'slot_create',
+			array(
+				'object_type'  => 'slot',
+				'object_id'    => (int) $new_id,
+				'blueprint_id' => $bp,
+			)
+		);
 		return $this->slot_response( $row, $bp );
 	}
 
@@ -831,6 +882,14 @@ class VTC_TP_Rest_Admin {
 		}
 		$this->db->update_slot_draft( $sid, $fields );
 		$row = $this->db->get_slot_draft( $sid );
+		VTC_TP_Metrics::audit(
+			'slot_patch',
+			array(
+				'object_type'  => 'slot',
+				'object_id'    => $sid,
+				'blueprint_id' => $bp,
+			)
+		);
 		return $this->slot_response( $row, $bp );
 	}
 
@@ -845,6 +904,14 @@ class VTC_TP_Rest_Admin {
 			return new WP_Error( 'not_found', __( 'Blok niet gevonden.', 'vtc-training-planner' ), array( 'status' => 404 ) );
 		}
 		$this->db->delete_slot_draft( $sid );
+		VTC_TP_Metrics::audit(
+			'slot_delete',
+			array(
+				'object_type'  => 'slot',
+				'object_id'    => $sid,
+				'blueprint_id' => $bp,
+			)
+		);
 		return rest_ensure_response( array( 'deleted' => true, 'id' => $sid ) );
 	}
 
@@ -854,6 +921,14 @@ class VTC_TP_Rest_Admin {
 			return new WP_Error( 'no_blueprint', __( 'Geen blauwdruk gevonden.', 'vtc-training-planner' ), array( 'status' => 400 ) );
 		}
 		$this->db->publish_slots( $bp );
+		VTC_TP_Metrics::audit(
+			'publish',
+			array(
+				'object_type'  => 'blueprint',
+				'object_id'    => $bp,
+				'blueprint_id' => $bp,
+			)
+		);
 		return rest_ensure_response( array( 'ok' => true ) );
 	}
 
@@ -879,6 +954,14 @@ class VTC_TP_Rest_Admin {
 		}
 		$new_id = $this->db->insert_venue_unavail( $vid, $dow, $st, $en );
 		$row    = $this->db->get_venue_unavail_row( $new_id );
+		VTC_TP_Metrics::audit(
+			'unavail_create',
+			array(
+				'object_type'  => 'unavailability',
+				'object_id'    => (int) $new_id,
+				'blueprint_id' => $bp,
+			)
+		);
 		return rest_ensure_response( array( 'unavailability' => $this->unavail_to_array( $row ) ) );
 	}
 
@@ -933,6 +1016,14 @@ class VTC_TP_Rest_Admin {
 		}
 		$this->db->update_venue_unavail( $uid, $fields );
 		$row = $this->db->get_venue_unavail_row( $uid );
+		VTC_TP_Metrics::audit(
+			'unavail_patch',
+			array(
+				'object_type'  => 'unavailability',
+				'object_id'    => $uid,
+				'blueprint_id' => $bp,
+			)
+		);
 		return rest_ensure_response( array( 'unavailability' => $this->unavail_to_array( $row ) ) );
 	}
 
@@ -947,6 +1038,14 @@ class VTC_TP_Rest_Admin {
 			return new WP_Error( 'not_found', __( 'Blok niet gevonden.', 'vtc-training-planner' ), array( 'status' => 404 ) );
 		}
 		$this->db->delete_venue_unavail( $uid );
+		VTC_TP_Metrics::audit(
+			'unavail_delete',
+			array(
+				'object_type'  => 'unavailability',
+				'object_id'    => $uid,
+				'blueprint_id' => $bp,
+			)
+		);
 		return rest_ensure_response( array( 'deleted' => true, 'id' => $uid ) );
 	}
 
@@ -1013,6 +1112,14 @@ class VTC_TP_Rest_Admin {
 		if ( ! $vid ) {
 			return new WP_Error( 'version_fail', __( 'Conceptversie kon niet worden aangemaakt.', 'vtc-training-planner' ), array( 'status' => 400 ) );
 		}
+		VTC_TP_Metrics::audit(
+			'version_create',
+			array(
+				'object_type'  => 'blueprint_version',
+				'object_id'    => (int) $vid,
+				'blueprint_id' => $bp,
+			)
+		);
 		return rest_ensure_response( array( 'version_id' => (int) $vid ) );
 	}
 
@@ -1048,6 +1155,14 @@ class VTC_TP_Rest_Admin {
 		if ( ! $this->db->set_editing_version_id_for_blueprint( $bp, $vid ) ) {
 			return new WP_Error( 'bad_version', __( 'Versie hoort niet bij deze blauwdruk.', 'vtc-training-planner' ), array( 'status' => 400 ) );
 		}
+		VTC_TP_Metrics::audit(
+			'version_switch',
+			array(
+				'object_type'  => 'blueprint_version',
+				'object_id'    => $vid,
+				'blueprint_id' => $bp,
+			)
+		);
 		return rest_ensure_response( array( 'ok' => true ) );
 	}
 
