@@ -13,6 +13,9 @@ class VTC_TP_Nevobo {
 
 	const BASE = 'https://api.nevobo.nl/export';
 
+	/** Namespace van <nevobo:status> in huidige RSS-feeds. */
+	const NS_NEVOBO_RSS = 'https://www.api.nevobo.nl/rss/';
+
 	/** @var VTC_TP_DB */
 	private $db;
 
@@ -21,53 +24,192 @@ class VTC_TP_Nevobo {
 	}
 
 	/**
+	 * Genormaliseerde clubcode (alleen a-z0-9, lowercase).
+	 *
+	 * @param string $nevobo_code Ruwe code.
+	 * @return string
+	 */
+	public static function normalize_club_code( $nevobo_code ) {
+		return strtolower( preg_replace( '/[^a-z0-9]/', '', (string) $nevobo_code ) );
+	}
+
+	/**
+	 * Transient-key voor programma-cache.
+	 *
+	 * @param string $code Genormaliseerde code.
+	 * @return string
+	 */
+	public static function cache_key_for_code( $code ) {
+		return 'vtc_tp_nevobo_prog_' . $code;
+	}
+
+	/**
 	 * Parsed matches from club programma RSS (cached).
 	 *
+	 * @param string $nevobo_code Clubcode.
+	 * @param bool   $force_refresh Cache overslaan.
 	 * @return array<int, array<string, mixed>>
 	 */
-	public function get_club_schedule_matches( $nevobo_code ) {
-		$code = strtolower( preg_replace( '/[^a-z0-9]/', '', (string) $nevobo_code ) );
+	public function get_club_schedule_matches( $nevobo_code, $force_refresh = false ) {
+		$code = self::normalize_club_code( $nevobo_code );
 		if ( '' === $code ) {
 			return array();
 		}
 
-		$ttl   = max( 60, (int) get_option( 'vtc_tp_cache_ttl', 1800 ) );
-		$cache = get_transient( 'vtc_tp_nevobo_prog_' . $code );
-		if ( false !== $cache && is_array( $cache ) ) {
-			return $cache;
+		$cache_key = self::cache_key_for_code( $code );
+		if ( ! $force_refresh ) {
+			$cache = get_transient( $cache_key );
+			if ( false !== $cache && is_array( $cache ) ) {
+				return $cache;
+			}
+		} else {
+			delete_transient( $cache_key );
 		}
 
-		$url  = self::BASE . '/vereniging/' . rawurlencode( $code ) . '/programma.rss';
-		$body = $this->http_get_body( $url );
-		if ( null === $body ) {
-			return array();
-		}
+		$probe = $this->fetch_and_parse( $code );
+		$matches = isset( $probe['matches'] ) && is_array( $probe['matches'] ) ? $probe['matches'] : array();
 
-		$matches = $this->parse_rss_items( $body );
-		set_transient( 'vtc_tp_nevobo_prog_' . $code, $matches, $ttl );
+		// Lege resultaten niet cachen: anders blijft een mislukte fetch/parse lang "0 items".
+		if ( ! empty( $matches ) && empty( $probe['error'] ) ) {
+			$ttl = max( 60, (int) get_option( 'vtc_tp_cache_ttl', 1800 ) );
+			set_transient( $cache_key, $matches, $ttl );
+		}
 
 		return $matches;
 	}
 
 	/**
-	 * @return string|null
+	 * Diagnose voor Instellingen: URL, HTTP, parse, cache.
+	 *
+	 * @param string $nevobo_code Clubcode.
+	 * @param bool   $force_refresh True = opnieuw ophalen.
+	 * @return array{code:string,url:string,cached:bool,http_code:int|null,item_count:int,error:string,matches:array}
 	 */
-	private function http_get_body( $url ) {
+	public function probe_club_feed( $nevobo_code, $force_refresh = false ) {
+		$code = self::normalize_club_code( $nevobo_code );
+		$url  = '' === $code ? '' : self::BASE . '/vereniging/' . rawurlencode( $code ) . '/programma.rss';
+		$out  = array(
+			'code'       => $code,
+			'url'        => $url,
+			'cached'     => false,
+			'http_code'  => null,
+			'item_count' => 0,
+			'error'      => '',
+			'matches'    => array(),
+		);
+		if ( '' === $code ) {
+			$out['error'] = __( 'Geen Nevobo clubcode in Stamdata.', 'vtc-training-planner' );
+			return $out;
+		}
+
+		$cache_key = self::cache_key_for_code( $code );
+		if ( ! $force_refresh ) {
+			$cache = get_transient( $cache_key );
+			if ( false !== $cache && is_array( $cache ) ) {
+				$out['cached']     = true;
+				$out['matches']    = $cache;
+				$out['item_count'] = count( $cache );
+				if ( 0 === $out['item_count'] ) {
+					$out['error'] = __( 'Cache bevat 0 items (waarschijnlijk een eerdere mislukte parse). Vernieuw de feed.', 'vtc-training-planner' );
+				}
+				return $out;
+			}
+		} else {
+			delete_transient( $cache_key );
+		}
+
+		$probe = $this->fetch_and_parse( $code );
+		$out['http_code']  = $probe['http_code'];
+		$out['error']      = $probe['error'];
+		$out['matches']    = $probe['matches'];
+		$out['item_count'] = count( $probe['matches'] );
+
+		if ( ! empty( $probe['matches'] ) && empty( $probe['error'] ) ) {
+			$ttl = max( 60, (int) get_option( 'vtc_tp_cache_ttl', 1800 ) );
+			set_transient( $cache_key, $probe['matches'], $ttl );
+		}
+
+		return $out;
+	}
+
+	/**
+	 * @param string $code Genormaliseerde clubcode.
+	 * @return array{http_code:int|null,error:string,matches:array}
+	 */
+	private function fetch_and_parse( $code ) {
+		$url = self::BASE . '/vereniging/' . rawurlencode( $code ) . '/programma.rss';
+		$res = $this->http_get( $url );
+		if ( null === $res['body'] ) {
+			return array(
+				'http_code' => $res['http_code'],
+				'error'     => $res['error'] ? $res['error'] : __( 'Feed kon niet worden opgehaald.', 'vtc-training-planner' ),
+				'matches'   => array(),
+			);
+		}
+
+		$matches = $this->parse_rss_items( $res['body'] );
+		$error   = '';
+		if ( empty( $matches ) ) {
+			$lib = libxml_get_errors();
+			libxml_clear_errors();
+			if ( ! empty( $lib ) ) {
+				$error = __( 'XML-parsefout in RSS-feed.', 'vtc-training-planner' );
+			} else {
+				$error = __( 'Feed opgehaald, maar geen <item>-elementen gevonden.', 'vtc-training-planner' );
+			}
+		}
+
+		return array(
+			'http_code' => $res['http_code'],
+			'error'     => $error,
+			'matches'   => $matches,
+		);
+	}
+
+	/**
+	 * @param string $url Absolute URL.
+	 * @return array{body:?string,http_code:int|null,error:string}
+	 */
+	private function http_get( $url ) {
 		$response = wp_remote_get(
 			$url,
 			array(
-				'timeout'    => 15,
+				'timeout'    => 20,
 				'user-agent' => 'VTC-Training-Planner/' . VTC_TP_VERSION . '; ' . home_url( '/' ),
 			)
 		);
 		if ( is_wp_error( $response ) ) {
-			return null;
+			return array(
+				'body'      => null,
+				'http_code' => null,
+				'error'     => $response->get_error_message(),
+			);
 		}
-		$code = wp_remote_retrieve_response_code( $response );
+		$code = (int) wp_remote_retrieve_response_code( $response );
 		if ( $code < 200 || $code >= 300 ) {
-			return null;
+			return array(
+				'body'      => null,
+				'http_code' => $code,
+				'error'     => sprintf(
+					/* translators: %d: HTTP status */
+					__( 'HTTP-fout bij ophalen feed (%d).', 'vtc-training-planner' ),
+					$code
+				),
+			);
 		}
-		return wp_remote_retrieve_body( $response );
+		$body = wp_remote_retrieve_body( $response );
+		if ( ! is_string( $body ) || '' === trim( $body ) ) {
+			return array(
+				'body'      => null,
+				'http_code' => $code,
+				'error'     => __( 'Lege response van Nevobo.', 'vtc-training-planner' ),
+			);
+		}
+		return array(
+			'body'      => $body,
+			'http_code' => $code,
+			'error'     => '',
+		);
 	}
 
 	/**
@@ -75,6 +217,7 @@ class VTC_TP_Nevobo {
 	 */
 	public function parse_rss_items( $xml_string ) {
 		libxml_use_internal_errors( true );
+		libxml_clear_errors();
 		$xml = simplexml_load_string( $xml_string, 'SimpleXMLElement', LIBXML_NOCDATA );
 		if ( false === $xml ) {
 			return array();
@@ -98,8 +241,18 @@ class VTC_TP_Nevobo {
 		$desc  = isset( $item->description ) ? (string) $item->description : '';
 		$link  = isset( $item->link ) ? (string) $item->link : '';
 		$guid  = isset( $item->guid ) ? (string) $item->guid : '';
-		$ns    = $item->children( 'http://nevobo.nl/export/ns#' );
-		$status = $ns && isset( $ns->status ) ? (string) $ns->status : 'onbekend';
+
+		$status = 'onbekend';
+		$ns     = $item->children( self::NS_NEVOBO_RSS );
+		if ( $ns && isset( $ns->status ) ) {
+			$status = (string) $ns->status;
+		} else {
+			// Oudere namespace (legacy).
+			$ns_old = $item->children( 'http://nevobo.nl/export/ns#' );
+			if ( $ns_old && isset( $ns_old->status ) ) {
+				$status = (string) $ns_old->status;
+			}
+		}
 
 		$pub = isset( $item->pubDate ) ? strtotime( (string) $item->pubDate ) : false;
 		$iso = isset( $item->children( 'http://www.w3.org/2005/Atom' )->updated )
