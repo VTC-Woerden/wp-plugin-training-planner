@@ -33,7 +33,7 @@ class VTC_TP_Zaaltaken {
 	 * Opdrachten voor een ISO-week, geïndexeerd op wedstrijdcode (uppercase).
 	 *
 	 * @param string $iso_week Genormaliseerde ISO-week.
-	 * @return array{by_code: array<string, array{teller:string,scheidsrechter:string,team_thuis:string,team_uit:string,datum_ts:int}>, by_slot: array<string, array{teller:string,scheidsrechter:string,team_thuis:string,team_uit:string,datum_ts:int}>}
+	 * @return array{by_code: array<string, array<string, mixed>>, by_slot: array<string, array<string, mixed>>}
 	 */
 	public static function assignments_for_iso_week( $iso_week ) {
 		$empty = array(
@@ -45,7 +45,7 @@ class VTC_TP_Zaaltaken {
 			return $empty;
 		}
 
-		$cache_key = 'vtc_tp_zaaltaken_' . $iso_week;
+		$cache_key = 'vtc_tp_zaaltaken_v2_' . $iso_week;
 		$cached    = get_transient( $cache_key );
 		if ( false !== $cached && is_array( $cached ) ) {
 			return $cached;
@@ -60,7 +60,7 @@ class VTC_TP_Zaaltaken {
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name is prefixed constant.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT code, team_thuis, team_uit, datum, teller, scheidsrechter
+				"SELECT code, team_thuis, team_uit, datum, veld, teller, scheidsrechter
 				FROM {$table}
 				WHERE datum >= %s AND datum < %s
 				AND (actief IS NULL OR actief = 1)",
@@ -76,16 +76,17 @@ class VTC_TP_Zaaltaken {
 		foreach ( $rows as $row ) {
 			$code = isset( $row->code ) ? strtoupper( trim( (string) $row->code ) ) : '';
 			$ts   = ! empty( $row->datum ) ? strtotime( (string) $row->datum ) : false;
+			$veld = isset( $row->veld ) ? trim( (string) $row->veld ) : '';
 			$item = array(
+				'code'           => $code,
+				'veld'           => $veld,
+				'field_slug'     => self::veld_to_field_slug( $veld ),
 				'teller'         => isset( $row->teller ) ? trim( (string) $row->teller ) : '',
 				'scheidsrechter' => isset( $row->scheidsrechter ) ? trim( (string) $row->scheidsrechter ) : '',
 				'team_thuis'     => isset( $row->team_thuis ) ? trim( (string) $row->team_thuis ) : '',
 				'team_uit'       => isset( $row->team_uit ) ? trim( (string) $row->team_uit ) : '',
 				'datum_ts'       => $ts ? (int) $ts : 0,
 			);
-			if ( '' === $item['teller'] && '' === $item['scheidsrechter'] ) {
-				// Geen toewijzing: toch indexeren zodat we “nog niet ingevuld” kunnen herkennen.
-			}
 			if ( $code ) {
 				$out['by_code'][ $code ] = $item;
 			}
@@ -100,59 +101,122 @@ class VTC_TP_Zaaltaken {
 	}
 
 	/**
+	 * Sporthal-Excel veld ("4", "H1") → Nevobo slug (veld-4, veld-h1).
+	 *
+	 * @param string $veld
+	 */
+	public static function veld_to_field_slug( $veld ) {
+		$v = strtolower( trim( (string) $veld ) );
+		if ( '' === $v ) {
+			return '';
+		}
+		if ( 0 === strpos( $v, 'veld-' ) ) {
+			return $v;
+		}
+		if ( 0 === strpos( $v, 'veld ' ) ) {
+			$v = trim( substr( $v, 5 ) );
+		}
+		return 'veld-' . $v;
+	}
+
+	/**
 	 * @param array<string, mixed>                                                                                                                                         $match
 	 * @param array{by_code: array<string, array<string, mixed>>, by_slot: array<string, array<string, mixed>>} $index
-	 * @return array{teller:string,scheidsrechter:string}|null
+	 * @return array{teller:string,scheidsrechter:string,code:string,veld:string,field_slug:string}|null
 	 */
 	public static function resolve_for_match( array $match, array $index ) {
 		$code = '';
 		if ( ! empty( $match['match_code'] ) ) {
 			$code = strtoupper( trim( (string) $match['match_code'] ) );
 		}
+		$row = null;
 		if ( $code && isset( $index['by_code'][ $code ] ) ) {
 			$row = $index['by_code'][ $code ];
-			return array(
-				'teller'         => (string) $row['teller'],
-				'scheidsrechter' => (string) $row['scheidsrechter'],
-			);
+		} else {
+			$ts   = isset( $match['datetime_ts'] ) ? (int) $match['datetime_ts'] : 0;
+			$home = isset( $match['home_team'] ) ? (string) $match['home_team'] : '';
+			if ( $ts > 0 && '' !== $home ) {
+				$slot = self::slot_key( $ts, $home );
+				if ( isset( $index['by_slot'][ $slot ] ) ) {
+					$row = $index['by_slot'][ $slot ];
+				} else {
+					$minute = $ts - ( $ts % 60 );
+					$home_n = self::normalize_team( $home );
+					foreach ( $index['by_slot'] as $cand ) {
+						$row_ts = isset( $cand['datum_ts'] ) ? (int) $cand['datum_ts'] : 0;
+						if ( abs( $row_ts - $minute ) > 60 && abs( $row_ts - $ts ) > 60 ) {
+							continue;
+						}
+						$thuis_n = self::normalize_team( isset( $cand['team_thuis'] ) ? (string) $cand['team_thuis'] : '' );
+						if ( '' === $thuis_n || '' === $home_n ) {
+							continue;
+						}
+						if ( $thuis_n === $home_n || false !== strpos( $home_n, $thuis_n ) || false !== strpos( $thuis_n, $home_n ) ) {
+							$row = $cand;
+							break;
+						}
+					}
+				}
+			}
 		}
-
-		$ts = isset( $match['datetime_ts'] ) ? (int) $match['datetime_ts'] : 0;
-		$home = isset( $match['home_team'] ) ? (string) $match['home_team'] : '';
-		if ( $ts <= 0 || '' === $home ) {
+		if ( ! $row ) {
 			return null;
 		}
+		return array(
+			'teller'         => (string) ( $row['teller'] ?? '' ),
+			'scheidsrechter' => (string) ( $row['scheidsrechter'] ?? '' ),
+			'code'           => (string) ( $row['code'] ?? '' ),
+			'veld'           => (string) ( $row['veld'] ?? '' ),
+			'field_slug'     => (string) ( $row['field_slug'] ?? '' ),
+		);
+	}
 
-		$slot = self::slot_key( $ts, $home );
-		if ( isset( $index['by_slot'][ $slot ] ) ) {
-			$row = $index['by_slot'][ $slot ];
-			return array(
-				'teller'         => (string) $row['teller'],
-				'scheidsrechter' => (string) $row['scheidsrechter'],
+	/**
+	 * Zet veld/code uit wedstrijd-planner op RSS-matches (betrouwbaarder bij gelijke starttijden).
+	 *
+	 * @param array<int, array<string, mixed>> $matches
+	 * @param string                           $iso_week
+	 * @return array<int, array<string, mixed>>
+	 */
+	public static function enrich_matches_with_planner_fields( array $matches, $iso_week ) {
+		if ( empty( $matches ) ) {
+			return $matches;
+		}
+		$index = self::assignments_for_iso_week( $iso_week );
+		if ( empty( $index['by_code'] ) && empty( $index['by_slot'] ) ) {
+			return $matches;
+		}
+		foreach ( $matches as &$m ) {
+			$hit = self::resolve_for_match( $m, $index );
+			if ( ! $hit ) {
+				continue;
+			}
+			if ( ! empty( $hit['code'] ) ) {
+				$m['match_code'] = $hit['code'];
+			}
+			if ( ! empty( $hit['field_slug'] ) ) {
+				$m['field_slug']  = $hit['field_slug'];
+				$m['field_label'] = self::field_slug_to_label( $hit['field_slug'] );
+				$m['field_from_planner'] = true;
+			}
+		}
+		unset( $m );
+		return $matches;
+	}
+
+	/**
+	 * @param string $slug
+	 */
+	public static function field_slug_to_label( $slug ) {
+		$slug = strtolower( (string) $slug );
+		if ( preg_match( '/^veld-(.+)$/i', $slug, $mm ) ) {
+			return sprintf(
+				/* translators: %s: field code/number */
+				__( 'Veld %s', 'vtc-training-planner' ),
+				strtoupper( (string) $mm[1] )
 			);
 		}
-
-		// Fuzzy: zelfde minuut + thuisteam-naam overlapt.
-		$minute = $ts - ( $ts % 60 );
-		$home_n = self::normalize_team( $home );
-		foreach ( $index['by_slot'] as $row ) {
-			$row_ts = isset( $row['datum_ts'] ) ? (int) $row['datum_ts'] : 0;
-			if ( abs( $row_ts - $minute ) > 60 && abs( $row_ts - $ts ) > 60 ) {
-				continue;
-			}
-			$thuis_n = self::normalize_team( isset( $row['team_thuis'] ) ? (string) $row['team_thuis'] : '' );
-			if ( '' === $thuis_n || '' === $home_n ) {
-				continue;
-			}
-			if ( $thuis_n === $home_n || false !== strpos( $home_n, $thuis_n ) || false !== strpos( $thuis_n, $home_n ) ) {
-				return array(
-					'teller'         => (string) $row['teller'],
-					'scheidsrechter' => (string) $row['scheidsrechter'],
-				);
-			}
-		}
-
-		return null;
+		return $slug;
 	}
 
 	/**

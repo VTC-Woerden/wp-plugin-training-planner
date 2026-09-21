@@ -692,6 +692,8 @@ class VTC_TP_Schedule {
 		if ( 'none' !== $scope ) {
 			$raw  = $nevobo->get_club_schedule_matches( $code );
 			$week = $nevobo->filter_matches_in_iso_week( $raw, $norm );
+			// Eerst wedstrijd-planner (veld/code), daarna JSON — voorkomt verwarring bij gelijke starttijden.
+			$week = VTC_TP_Zaaltaken::enrich_matches_with_planner_fields( $week, $norm );
 			$week = $nevobo->enrich_matches_with_speelveld( $week, $code, $norm );
 
 			$bp_base = $this->db->get_base_blueprint_id();
