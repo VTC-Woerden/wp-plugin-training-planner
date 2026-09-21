@@ -893,6 +893,19 @@
 		markDirty();
 	}
 
+	/** Uitzonderingsweek: opslaan is direct live (geen concept/publiceren). */
+	function isExceptionWeekEdit() {
+		return isWeekScope() && !!(state.data && state.data.has_exception);
+	}
+
+	function saveButtonLabel() {
+		return isExceptionWeekEdit() ? __('saveException') : __('saveDraft');
+	}
+
+	function dirtyBannerText() {
+		return isExceptionWeekEdit() ? __('dirtyBannerException') : __('dirtyBanner');
+	}
+
 	function syncDirtyUi() {
 		var root = document.getElementById('vtc-tp-planner-root');
 		if (!root) return;
@@ -905,7 +918,7 @@
 		var pubView = !!(state.data && state.data.planner_scope === 'blueprint' && state.data.viewing_published);
 		if (saveBtn) {
 			saveBtn.disabled = !state.localDirty || state.saving || pubView;
-			saveBtn.textContent = state.saving ? __('saving') : __('saveDraft');
+			saveBtn.textContent = state.saving ? __('saving') : saveButtonLabel();
 		}
 		if (pubBtn) {
 			pubBtn.disabled = state.saving || pubView;
@@ -1264,7 +1277,7 @@
 		html += '<button type="button" class="button vtc-tppl-mode-btn' + (inhuur ? ' is-active' : '') + '" data-mode="inhuur"' + (weekScope ? ' disabled' : '') + ' title="' + esc(__('modeInhuur')) + '">' + esc(__('modeInhuur')) + '</button>';
 		html += '</div>';
 		html += '<div class="vtc-tppl-actions">';
-		html += '<button type="button" class="button button-primary" id="vtc-tppl-save" disabled>' + esc(__('saveDraft')) + '</button>';
+		html += '<button type="button" class="button button-primary" id="vtc-tppl-save" disabled>' + esc(saveButtonLabel()) + '</button>';
 		html += '<button type="button" class="button" id="vtc-tppl-publish">' + esc(__('publish')) + '</button>';
 		html += '<button type="button" class="button" id="vtc-tppl-reload">' + esc(__('reload')) + '</button>';
 		html += '<span id="vtc-tppl-toast" class="vtc-tppl-toast" role="status"></span>';
@@ -1333,7 +1346,7 @@
 			html += '<p class="vtc-tppl-draft-banner">' + esc(__('draftHint')) + '</p>';
 		}
 		html += '</div>';
-		html += '<p id="vtc-tppl-dirty-banner" class="vtc-tppl-dirty-banner" hidden>' + esc(__('dirtyBanner')) + '</p>';
+		html += '<p id="vtc-tppl-dirty-banner" class="vtc-tppl-dirty-banner" hidden>' + esc(dirtyBannerText()) + '</p>';
 		if (!inhuur && !hasRotationAnchor()) {
 			var hasRotateSlot = (d.slots || []).some(function (s) {
 				return s.team_mode === 'rotate' && slotTeamIds(s).length > 1;
