@@ -23,20 +23,35 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Bootstrap apart (na mirror): WP wist metrics-token.bootstrap bij plugins_loaded;
+          # lftp chmod daarna faalt met "No such file".
+          BOOTSTRAP=""
           if [ -n "${METRICS_TOKEN:-}" ]; then
-            printf '%s' "$METRICS_TOKEN" > metrics-token.bootstrap
-            echo "Wrote metrics-token.bootstrap for one-shot WP option sync"
+            BOOTSTRAP="metrics-token.bootstrap"
+            printf '%s' "$METRICS_TOKEN" > "$BOOTSTRAP"
+            echo "Prepared $BOOTSTRAP for one-shot WP option sync"
           fi
 
           # Exclusions: adjust to your project
-          EXCLUDES="--exclude .git/ --exclude .github/ --exclude node_modules/ --exclude vendor/ --exclude .env"
+          EXCLUDES="--exclude .git/ --exclude .github/ --exclude node_modules/ --exclude vendor/ --exclude .env --exclude metrics-token.bootstrap"
 
           lftp -u "$USER","$PASS" -p "$PORT" "sftp://$HOST" <<EOF
           set sftp:auto-confirm yes
           set net:timeout 20
           set net:max-retries 2
+          set mirror:set-permissions no
           mirror -R --only-newer --verbose $EXCLUDES ./ "$REMOTE_DIR/"
           bye
           EOF
 
-          rm -f metrics-token.bootstrap
+          if [ -n "$BOOTSTRAP" ] && [ -f "$BOOTSTRAP" ]; then
+            lftp -u "$USER","$PASS" -p "$PORT" "sftp://$HOST" <<EOF
+            set sftp:auto-confirm yes
+            set net:timeout 20
+            set net:max-retries 2
+            put -O "$REMOTE_DIR/" "$BOOTSTRAP"
+            bye
+            EOF
+            echo "Uploaded $BOOTSTRAP"
+            rm -f "$BOOTSTRAP"
+          fi
