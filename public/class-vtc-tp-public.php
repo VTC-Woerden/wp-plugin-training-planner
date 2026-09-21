@@ -576,6 +576,20 @@ class VTC_TP_Public {
 		if ( $lane ) {
 			$parts[] = $lane;
 		}
+		if ( ! empty( $ev['scheidsrechter'] ) ) {
+			$parts[] = sprintf(
+				/* translators: %s: team name providing referee */
+				__( 'Scheidsrechter: %s', 'vtc-training-planner' ),
+				(string) $ev['scheidsrechter']
+			);
+		}
+		if ( ! empty( $ev['teller'] ) ) {
+			$parts[] = sprintf(
+				/* translators: %s: team name providing scorer */
+				__( 'Teller: %s', 'vtc-training-planner' ),
+				(string) $ev['teller']
+			);
+		}
 		if ( ! empty( $ev['conflict'] ) ) {
 			$parts[] = __( 'Conflict (overlap)', 'vtc-training-planner' );
 		}

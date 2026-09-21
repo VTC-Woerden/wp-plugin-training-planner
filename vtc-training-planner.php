@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       VTC Training Planner
  * Description:       Trainingsrooster en Nevobo-wedstrijden: beheer in wp-admin, weekoverzicht op de site (geen autoplanner).
- * Version:           0.2.54
+ * Version:           0.2.55
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            VTC Woerden
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'VTC_TP_VERSION', '0.2.54' );
+define( 'VTC_TP_VERSION', '0.2.55' );
 define( 'VTC_TP_FILE', __FILE__ );
 define( 'VTC_TP_DIR', plugin_dir_path( __FILE__ ) );
 define( 'VTC_TP_URL', plugin_dir_url( __FILE__ ) );
@@ -26,6 +26,7 @@ define( 'VTC_TP_CAP_PLANNER', 'vtc_tp_manage_planner' );
 require_once VTC_TP_DIR . 'includes/class-vtc-tp-activator.php';
 require_once VTC_TP_DIR . 'includes/class-vtc-tp-db.php';
 require_once VTC_TP_DIR . 'includes/class-vtc-tp-nevobo.php';
+require_once VTC_TP_DIR . 'includes/class-vtc-tp-zaaltaken.php';
 require_once VTC_TP_DIR . 'includes/class-vtc-tp-schedule.php';
 require_once VTC_TP_DIR . 'includes/class-vtc-tp-metrics.php';
 require_once VTC_TP_DIR . 'includes/class-vtc-tp-rest-admin.php';

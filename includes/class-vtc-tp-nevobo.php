@@ -473,6 +473,9 @@ class VTC_TP_Nevobo {
 			if ( ! empty( $pick['is_recreational'] ) ) {
 				$m['is_recreational'] = true;
 			}
+			if ( ! empty( $pick['match_code'] ) ) {
+				$m['match_code'] = (string) $pick['match_code'];
+			}
 		}
 		unset( $m );
 
@@ -493,7 +496,7 @@ class VTC_TP_Nevobo {
 		$from = ( new DateTimeImmutable( '@' . (int) $range[0] ) )->setTimezone( $tz )->format( 'Y-m-d' );
 		$to   = ( new DateTimeImmutable( '@' . ( (int) $range[1] - 1 ) ) )->setTimezone( $tz )->format( 'Y-m-d' );
 
-		$cache_key = 'vtc_tp_nevobo_fields_v2_' . $code . '_' . $iso_week;
+		$cache_key = 'vtc_tp_nevobo_fields_v3_' . $code . '_' . $iso_week;
 		$cached    = get_transient( $cache_key );
 		if ( false !== $cached && is_array( $cached ) ) {
 			return $cached;
@@ -549,6 +552,7 @@ class VTC_TP_Nevobo {
 				}
 				$poule = isset( $row['poule'] ) ? (string) $row['poule'] : '';
 				$lengte = isset( $row['lengte'] ) ? (int) $row['lengte'] : 0;
+				$mcode  = isset( $row['code'] ) ? strtoupper( trim( (string) $row['code'] ) ) : '';
 				$uid    = ( '' !== $speelveld )
 					? strtolower( untrailingslashit( $speelveld ) ) . '|' . (int) $ts
 					: ( 'm:' . ( isset( $row['uuid'] ) ? (string) $row['uuid'] : md5( $tijdstip . '|' . $poule ) ) );
@@ -560,6 +564,7 @@ class VTC_TP_Nevobo {
 					'duration_min'    => $lengte > 0 ? $lengte : 0,
 					'poule'           => $poule,
 					'is_recreational' => self::poule_is_recreational( $poule ),
+					'match_code'      => $mcode,
 				);
 				$by_ts[ (int) $ts ][] = $entry;
 				// Ook op minuut voor losse seconden-mismatch.

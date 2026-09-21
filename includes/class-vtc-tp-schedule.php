@@ -419,9 +419,13 @@ class VTC_TP_Schedule {
 	 * @param array<int, object>               $venues  Venues met location_name + nevobo_field_slug.
 	 * @return array<int, array<string, mixed>>
 	 */
-	public function matches_to_events( array $matches, array $venues = array() ) {
+	public function matches_to_events( array $matches, array $venues = array(), $iso_week = '' ) {
 		$tz     = wp_timezone();
 		$events = array();
+		$zaal   = array( 'by_code' => array(), 'by_slot' => array() );
+		if ( $iso_week ) {
+			$zaal = VTC_TP_Zaaltaken::assignments_for_iso_week( $iso_week );
+		}
 		foreach ( $matches as $m ) {
 			$ts = isset( $m['datetime_ts'] ) ? (int) $m['datetime_ts'] : 0;
 			if ( $ts <= 0 ) {
@@ -441,7 +445,7 @@ class VTC_TP_Schedule {
 			$vid   = $resolved['venue_id'];
 			$loc   = $resolved['location_label'] !== '' ? $resolved['location_label'] : $vname;
 			$field = $resolved['field_label'];
-			$events[] = array(
+			$ev    = array(
 				'type'           => 'match',
 				'start_ts'       => $start_dt->getTimestamp(),
 				'end_ts'         => $end_dt->getTimestamp(),
@@ -452,6 +456,16 @@ class VTC_TP_Schedule {
 				'field_label'    => $field,
 				'hall_key'       => $vid ? ( 'v:' . $vid ) : ( $vname ? strtolower( $vname ) : 'm:' . md5( $title ) ),
 			);
+			$tasks = VTC_TP_Zaaltaken::resolve_for_match( $m, $zaal );
+			if ( $tasks ) {
+				if ( '' !== $tasks['scheidsrechter'] ) {
+					$ev['scheidsrechter'] = $tasks['scheidsrechter'];
+				}
+				if ( '' !== $tasks['teller'] ) {
+					$ev['teller'] = $tasks['teller'];
+				}
+			}
+			$events[] = $ev;
 		}
 		usort(
 			$events,
@@ -689,7 +703,7 @@ class VTC_TP_Schedule {
 
 		$bp_base  = $this->db->get_base_blueprint_id();
 		$venues   = $this->db->get_venues_for_blueprint( $bp_eff );
-		$match_ev = $this->matches_to_events( $week, $venues );
+		$match_ev = $this->matches_to_events( $week, $venues, $norm );
 		$train    = $this->coalesce_shared_training_slots( $train );
 		$events   = $this->merge_and_flag_conflicts( $train, $match_ev );
 
