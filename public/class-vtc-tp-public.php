@@ -41,6 +41,13 @@ class VTC_TP_Public {
 			VTC_TP_VERSION,
 			true
 		);
+		wp_register_script(
+			'vtc-tp-public-tooltips',
+			VTC_TP_URL . 'assets/public-tooltips.js',
+			array(),
+			VTC_TP_VERSION,
+			true
+		);
 	}
 
 	public function register_shortcode() {
@@ -333,10 +340,9 @@ class VTC_TP_Public {
 					}
 					$bg  = self::event_block_color( $ev );
 					$tip = self::event_tooltip_text( $ev, $start, $end, $lane_label );
-					echo '<div class="' . esc_attr( $cls ) . '" style="left:' . esc_attr( (string) round( $left_pct, 4 ) ) . '%;width:' . esc_attr( (string) round( $width_pct, 4 ) ) . '%;background:' . esc_attr( $bg ) . '" tabindex="0" title="' . esc_attr( $tip ) . '" aria-label="' . esc_attr( $tip ) . '">';
+					echo '<div class="' . esc_attr( $cls ) . '" style="left:' . esc_attr( (string) round( $left_pct, 4 ) ) . '%;width:' . esc_attr( (string) round( $width_pct, 4 ) ) . '%;background:' . esc_attr( $bg ) . '" tabindex="0" data-vtc-tip="' . esc_attr( $tip ) . '" aria-label="' . esc_attr( $tip ) . '">';
 					echo '<span class="vtc-tp-block-title">' . esc_html( $ev['title'] ) . '</span>';
 					echo '<span class="vtc-tp-block-times"><span class="vtc-tp-block-start">' . esc_html( $start->format( 'H:i' ) ) . '</span><span class="vtc-tp-block-sep" aria-hidden="true">–</span><span class="vtc-tp-block-end">' . esc_html( $end->format( 'H:i' ) ) . '</span></span>';
-					echo '<span class="vtc-tp-block-tip" role="tooltip">' . esc_html( $tip ) . '</span>';
 					echo '</div>';
 				}
 				echo '</div>';
@@ -361,6 +367,7 @@ class VTC_TP_Public {
 		$ajax_nav = ! $is_admin && ! empty( $nav['enabled'] ) && ! empty( $nav['prev_iso'] ) && ! empty( $nav['next_iso'] );
 
 		ob_start();
+		wp_enqueue_script( 'vtc-tp-public-tooltips' );
 		if ( $ajax_nav ) {
 			wp_enqueue_script( 'vtc-tp-week-nav' );
 			wp_localize_script(

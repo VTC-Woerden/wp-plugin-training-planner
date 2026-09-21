@@ -148,7 +148,7 @@
 	border-radius: 10px;
 	background: var(--vtc-tp-card);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-	overflow: visible;
+	overflow: hidden;
 	display: flex;
 	flex-direction: column;
 }
@@ -294,7 +294,7 @@
 	color: #fff;
 	text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
-	overflow: visible;
+	overflow: hidden;
 	border: 1px solid rgba(0, 0, 0, 0.12);
 	cursor: default;
 }
@@ -347,15 +347,13 @@
 	font-weight: 500;
 }
 
-.vtc-tp-block-tip {
-	display: none;
-	position: absolute;
-	left: 50%;
-	top: calc(100% + 8px);
-	transform: translateX(-50%);
-	z-index: 20;
+/* Viewport-fixed tip (body); geen layout/scroll in de weekgrid. */
+.vtc-tp-floating-tip {
+	position: fixed;
+	z-index: 100000;
+	box-sizing: border-box;
 	min-width: 12rem;
-	max-width: min(20rem, 70vw);
+	max-width: min(20rem, calc(100vw - 16px));
 	padding: 8px 10px;
 	border-radius: 6px;
 	background: #1d2327;
@@ -364,26 +362,13 @@
 	font-weight: 600;
 	line-height: 1.4;
 	text-align: left;
-	text-shadow: none;
 	white-space: pre-line;
 	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
 	pointer-events: none;
 }
 
-.vtc-tp-block-tip::after {
-	content: "";
-	position: absolute;
-	bottom: 100%;
-	left: 50%;
-	margin-left: -6px;
-	border: 6px solid transparent;
-	border-bottom-color: #1d2327;
-}
-
-.vtc-tp-block:hover .vtc-tp-block-tip,
-.vtc-tp-block:focus .vtc-tp-block-tip,
-.vtc-tp-block:focus-within .vtc-tp-block-tip {
-	display: block;
+.vtc-tp-floating-tip[hidden] {
+	display: none !important;
 }
 
 /* Blok-editor: korte placeholder als SSR nog laadt */
