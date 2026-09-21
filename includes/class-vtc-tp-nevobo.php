@@ -530,7 +530,7 @@ class VTC_TP_Nevobo {
 		$from = ( new DateTimeImmutable( '@' . (int) $range[0] ) )->setTimezone( $tz )->format( 'Y-m-d' );
 		$to   = ( new DateTimeImmutable( '@' . ( (int) $range[1] - 1 ) ) )->setTimezone( $tz )->format( 'Y-m-d' );
 
-		$cache_key = 'vtc_tp_nevobo_fields_v5_' . $code . '_' . $iso_week;
+		$cache_key = 'vtc_tp_nevobo_fields_v6_' . $code . '_' . $iso_week;
 		$cached    = get_transient( $cache_key );
 		if ( false !== $cached && is_array( $cached ) ) {
 			return $cached;
@@ -629,13 +629,20 @@ class VTC_TP_Nevobo {
 	}
 
 	/**
-	 * Nevobo-poule in recreantencompetitie / -toernooi / mastercompetitie.
+	 * Korte recreantencompetitie/-toernooi (30 min). Niet: mastercompetitie (2u).
 	 *
 	 * @param string $poule Poule IRI/pad.
 	 */
 	public static function poule_is_recreational( $poule ) {
 		$p = strtolower( (string) $poule );
-		return ( '' !== $p && false !== strpos( $p, 'recreanten' ) );
+		if ( '' === $p || false === strpos( $p, 'recreanten' ) ) {
+			return false;
+		}
+		// Nevobo-pad bevat "recreanten-mastercompetitie" maar die wedstrijden duren 120 min.
+		if ( false !== strpos( $p, 'master' ) ) {
+			return false;
+		}
+		return true;
 	}
 
 	/**
