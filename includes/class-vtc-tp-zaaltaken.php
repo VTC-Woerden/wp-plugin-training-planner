@@ -195,8 +195,8 @@ class VTC_TP_Zaaltaken {
 				$m['match_code'] = $hit['code'];
 			}
 			if ( ! empty( $hit['field_slug'] ) ) {
-				$m['field_slug']  = $hit['field_slug'];
-				$m['field_label'] = self::field_slug_to_label( $hit['field_slug'] );
+				$m['field_slug']         = $hit['field_slug'];
+				$m['field_label']        = self::field_slug_to_label( $hit['field_slug'] );
 				$m['field_from_planner'] = true;
 			}
 		}

@@ -41,7 +41,7 @@ class VTC_TP_Nevobo {
 	 * @return string
 	 */
 	public static function cache_key_for_code( $code ) {
-		return 'vtc_tp_nevobo_prog_' . $code;
+		return 'vtc_tp_nevobo_prog_v2_' . $code;
 	}
 
 	/**
@@ -324,6 +324,11 @@ class VTC_TP_Nevobo {
 			} else {
 				$match['venue_name'] = $venue_full;
 			}
+		}
+
+		// Nevobo-code in description: "Wedstrijd: 3000XC2K1 ED" → XC2K1-ED.
+		if ( $desc && preg_match( '/Wedstrijd:\s*\d*([A-Za-z0-9]+)\s+([A-Za-z0-9]{1,3})\b/u', $desc, $cm ) ) {
+			$match['match_code'] = strtoupper( $cm[1] . '-' . $cm[2] );
 		}
 
 		return $match;

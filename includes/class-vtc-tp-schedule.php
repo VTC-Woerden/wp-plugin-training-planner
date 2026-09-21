@@ -590,13 +590,12 @@ class VTC_TP_Schedule {
 			$score = 0;
 			if ( $slug && $vslug && $slug === $vslug ) {
 				$score = 100;
-			} elseif ( $slug && preg_match( '/(\d+)/', $slug, $sm ) ) {
-				$num = $sm[1];
-				if ( $vname && ( $vname === 'veld ' . $num || $vname === 'veld-' . $num || false !== strpos( $vname, $num ) ) ) {
+			} elseif ( $slug && preg_match( '/^veld-(.+)$/i', $slug, $sm ) ) {
+				$num = strtolower( (string) $sm[1] );
+				if ( $vname === 'veld ' . $num || $vname === 'veld-' . $num || $vname === $num ) {
 					$score = 80;
-				}
-				if ( $vslug && false !== strpos( $vslug, $num ) ) {
-					$score = max( $score, 70 );
+				} elseif ( $vslug === 'veld-' . $num ) {
+					$score = 70;
 				}
 			}
 			if ( $score > 0 ) {
