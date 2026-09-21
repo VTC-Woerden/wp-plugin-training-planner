@@ -204,18 +204,9 @@ class VTC_TP_Public {
 		$tz = wp_timezone();
 		ob_start();
 		echo '<div class="vtc-tp-week vtc-tp-week--visual" data-iso-week="' . esc_attr( $data['iso_week'] ) . '">';
-		$has_notes = ! empty( $data['used_exceptions'] ) || ! empty( $data['uses_deviation_blueprint'] );
-		if ( $show_main_title || $has_notes ) {
-			echo '<header class="vtc-tp-week-header' . ( $show_main_title ? '' : ' vtc-tp-week-header--notes-only' ) . '">';
-			if ( $show_main_title ) {
-				echo '<h2 class="vtc-tp-week-title">' . esc_html( sprintf( __( 'Week %s', 'vtc-training-planner' ), $data['iso_week'] ) ) . '</h2>';
-			}
-			if ( ! empty( $data['used_exceptions'] ) ) {
-				echo '<p class="vtc-tp-week-note">' . esc_html__( 'Deze week gebruikt een uitzonderingsrooster.', 'vtc-training-planner' ) . '</p>';
-			}
-			if ( ! empty( $data['uses_deviation_blueprint'] ) ) {
-				echo '<p class="vtc-tp-week-note">' . esc_html__( 'Deze week volgt een afwijkende blauwdruk.', 'vtc-training-planner' ) . '</p>';
-			}
+		if ( $show_main_title ) {
+			echo '<header class="vtc-tp-week-header">';
+			echo '<h2 class="vtc-tp-week-title">' . esc_html( sprintf( __( 'Week %s', 'vtc-training-planner' ), $data['iso_week'] ) ) . '</h2>';
 			echo '</header>';
 		}
 
