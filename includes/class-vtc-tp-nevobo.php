@@ -30,7 +30,8 @@ class VTC_TP_Nevobo {
 	 * @return string
 	 */
 	public static function normalize_club_code( $nevobo_code ) {
-		return strtolower( preg_replace( '/[^a-z0-9]/', '', (string) $nevobo_code ) );
+		// Eerst lowercase: anders stript [^a-z0-9] hoofdletters (CKL9X7N → 97).
+		return preg_replace( '/[^a-z0-9]/', '', strtolower( (string) $nevobo_code ) );
 	}
 
 	/**

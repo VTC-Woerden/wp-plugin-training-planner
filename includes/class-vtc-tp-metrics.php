@@ -337,7 +337,7 @@ class VTC_TP_Metrics {
 		$audit_rows = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$p}vtc_tp_audit_log" );
 
 		$nevobo_items = 0;
-		$code         = strtolower( preg_replace( '/[^a-z0-9]/', '', (string) $this->db->get_nevobo_code() ) );
+		$code         = VTC_TP_Nevobo::normalize_club_code( $this->db->get_nevobo_code() );
 		if ( $code ) {
 			$cache = get_transient( 'vtc_tp_nevobo_prog_' . $code );
 			if ( is_array( $cache ) ) {
