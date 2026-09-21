@@ -34,12 +34,13 @@ jobs:
 
           EXCLUDES="--exclude .git/ --exclude .github/ --exclude node_modules/ --exclude vendor/ --exclude .env --exclude metrics-token.bootstrap"
 
+          # Altijd uploaden (geen --only-newer): anders blijven fixes soms op de server achter.
           lftp -u "$USER","$PASS" -p "$PORT" "sftp://$HOST" -e "
           set sftp:auto-confirm yes;
           set net:timeout 20;
           set net:max-retries 2;
           set mirror:set-permissions no;
-          mirror -R --only-newer --verbose $EXCLUDES ./ $REMOTE_DIR/;
+          mirror -R --verbose $EXCLUDES ./ $REMOTE_DIR/;
           bye
           "
 

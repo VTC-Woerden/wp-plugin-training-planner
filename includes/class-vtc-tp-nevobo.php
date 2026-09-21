@@ -492,13 +492,11 @@ class VTC_TP_Nevobo {
 			if ( ! empty( $pick['uid'] ) ) {
 				$used[ (string) $pick['uid'] ] = true;
 			}
-			// Planner-veld wint bij conflict (sporthal-Excel is leidend voor thuishal).
-			$lock_field = ! empty( $m['field_from_planner'] ) && ! empty( $m['field_slug'] );
-			if ( ! $lock_field && ! empty( $pick['field_slug'] ) ) {
-				$m['field_slug'] = $pick['field_slug'];
-			}
-			if ( ! $lock_field && ! empty( $pick['field_label'] ) ) {
-				$m['field_label'] = $pick['field_label'];
+			// JSON-speelveld wint bij bekende wedstrijdcode; planner-veld is alleen fallback.
+			if ( ! empty( $pick['field_slug'] ) ) {
+				$m['field_slug']  = $pick['field_slug'];
+				$m['field_label'] = isset( $pick['field_label'] ) ? (string) $pick['field_label'] : $m['field_label'];
+				unset( $m['field_from_planner'] );
 			}
 			if ( isset( $pick['duration_min'] ) && (int) $pick['duration_min'] > 0 ) {
 				$m['duration_min'] = (int) $pick['duration_min'];
@@ -509,8 +507,8 @@ class VTC_TP_Nevobo {
 			if ( ! empty( $pick['is_recreational'] ) ) {
 				$m['is_recreational'] = true;
 			}
-			if ( ! empty( $pick['match_code'] ) && empty( $m['match_code'] ) ) {
-				$m['match_code'] = (string) $pick['match_code'];
+			if ( ! empty( $pick['match_code'] ) ) {
+				$m['match_code'] = VTC_TP_Nevobo::normalize_match_code( (string) $pick['match_code'] );
 			}
 		}
 		unset( $m );
