@@ -412,7 +412,7 @@ class VTC_TP_Schedule {
 	}
 
 	/**
-	 * Nevobo matches as timeline events (datetime from RSS item; end = +2h guess if unknown).
+	 * Nevobo matches as timeline events (datetime from RSS item; duur uit API / recreanten=30m / anders 2u).
 	 * Koppelt speelveld aan stamdata-velden via field_slug / veldnaam.
 	 *
 	 * @param array<int, array<string, mixed>> $matches
@@ -428,7 +428,8 @@ class VTC_TP_Schedule {
 				continue;
 			}
 			$start_dt = ( new DateTimeImmutable( '@' . $ts ) )->setTimezone( $tz );
-			$end_dt   = $start_dt->modify( '+2 hours' );
+			$mins     = $this->match_duration_minutes( $m );
+			$end_dt   = $start_dt->modify( '+' . $mins . ' minutes' );
 			$home     = isset( $m['home_team'] ) ? $m['home_team'] : '';
 			$away     = isset( $m['away_team'] ) ? $m['away_team'] : '';
 			$title    = trim( $home . ' — ' . $away );
@@ -459,6 +460,51 @@ class VTC_TP_Schedule {
 			}
 		);
 		return $this->trim_match_ends_before_next_on_field( $events );
+	}
+
+	/**
+	 * Speelduur in minuten: recreanten altijd 30; anders Nevobo lengte of 120.
+	 *
+	 * @param array<string, mixed> $m
+	 */
+	private function match_duration_minutes( array $m ) {
+		if ( $this->match_is_recreational( $m ) ) {
+			return 30;
+		}
+		if ( ! empty( $m['duration_min'] ) && (int) $m['duration_min'] > 0 ) {
+			return (int) $m['duration_min'];
+		}
+		return 120;
+	}
+
+	/**
+	 * @param array<string, mixed> $m
+	 */
+	private function match_is_recreational( array $m ) {
+		if ( ! empty( $m['is_recreational'] ) ) {
+			return true;
+		}
+		if ( ! empty( $m['poule'] ) && VTC_TP_Nevobo::poule_is_recreational( (string) $m['poule'] ) ) {
+			return true;
+		}
+		$blob = strtolower(
+			trim(
+				( isset( $m['home_team'] ) ? (string) $m['home_team'] : '' ) . ' ' .
+				( isset( $m['away_team'] ) ? (string) $m['away_team'] : '' ) . ' ' .
+				( isset( $m['title'] ) ? (string) $m['title'] : '' )
+			)
+		);
+		if ( '' === $blob ) {
+			return false;
+		}
+		if ( false !== strpos( $blob, 'recreat' ) ) {
+			return true;
+		}
+		// Stamdata-namen: "VTC Woerden DR 1" / "HR 2".
+		if ( preg_match( '/\b[dh]r\s*\d+\b/u', $blob ) ) {
+			return true;
+		}
+		return false;
 	}
 
 	/**

@@ -57,7 +57,7 @@ class VTC_TP_Nevobo {
 		delete_transient( self::cache_key_for_code( $code ) );
 		global $wpdb;
 		// Speelveld-index per week: vtc_tp_nevobo_fields_{code}_{iso}.
-		$like = $wpdb->esc_like( '_transient_vtc_tp_nevobo_fields_' . $code . '_' ) . '%';
+		$like = $wpdb->esc_like( '_transient_vtc_tp_nevobo_fields_' ) . '%' . $wpdb->esc_like( $code . '_' ) . '%';
 		$keys = $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s", $like ) );
 		foreach ( $keys as $opt ) {
 			$key = preg_replace( '/^_transient_/', '', (string) $opt );
@@ -464,6 +464,15 @@ class VTC_TP_Nevobo {
 			if ( ! empty( $pick['field_label'] ) ) {
 				$m['field_label'] = $pick['field_label'];
 			}
+			if ( isset( $pick['duration_min'] ) && (int) $pick['duration_min'] > 0 ) {
+				$m['duration_min'] = (int) $pick['duration_min'];
+			}
+			if ( ! empty( $pick['poule'] ) ) {
+				$m['poule'] = (string) $pick['poule'];
+			}
+			if ( ! empty( $pick['is_recreational'] ) ) {
+				$m['is_recreational'] = true;
+			}
 		}
 		unset( $m );
 
@@ -484,7 +493,7 @@ class VTC_TP_Nevobo {
 		$from = ( new DateTimeImmutable( '@' . (int) $range[0] ) )->setTimezone( $tz )->format( 'Y-m-d' );
 		$to   = ( new DateTimeImmutable( '@' . ( (int) $range[1] - 1 ) ) )->setTimezone( $tz )->format( 'Y-m-d' );
 
-		$cache_key = 'vtc_tp_nevobo_fields_' . $code . '_' . $iso_week;
+		$cache_key = 'vtc_tp_nevobo_fields_v2_' . $code . '_' . $iso_week;
 		$cached    = get_transient( $cache_key );
 		if ( false !== $cached && is_array( $cached ) ) {
 			return $cached;
@@ -520,29 +529,37 @@ class VTC_TP_Nevobo {
 					continue;
 				}
 				$speelveld = isset( $row['speelveld'] ) ? (string) $row['speelveld'] : '';
-				if ( '' === $speelveld ) {
-					continue;
-				}
-				$slug = strtolower( basename( untrailingslashit( $speelveld ) ) );
-				// veld-3 → "Veld 3"; veld-h1 → "Veld H1".
-				$label = $slug;
-				if ( preg_match( '/^veld-(.+)$/i', $slug, $mm ) ) {
-					$label = sprintf(
-						/* translators: %s: field code/number */
-						__( 'Veld %s', 'vtc-training-planner' ),
-						strtoupper( (string) $mm[1] )
-					);
+				$slug      = '';
+				$label     = '';
+				if ( '' !== $speelveld ) {
+					$slug  = strtolower( basename( untrailingslashit( $speelveld ) ) );
+					$label = $slug;
+					if ( preg_match( '/^veld-(.+)$/i', $slug, $mm ) ) {
+						$label = sprintf(
+							/* translators: %s: field code/number */
+							__( 'Veld %s', 'vtc-training-planner' ),
+							strtoupper( (string) $mm[1] )
+						);
+					}
 				}
 				$hall = '';
 				if ( ! empty( $row['speelzaal'] ) ) {
 					$parts = explode( '/', trim( (string) $row['speelzaal'], '/' ) );
 					$hall  = str_replace( '-', ' ', (string) end( $parts ) );
 				}
-				$entry = array(
-					'uid'         => strtolower( untrailingslashit( $speelveld ) ) . '|' . (int) $ts,
-					'field_slug'  => $slug,
-					'field_label' => $label,
-					'hall_hint'   => $hall,
+				$poule = isset( $row['poule'] ) ? (string) $row['poule'] : '';
+				$lengte = isset( $row['lengte'] ) ? (int) $row['lengte'] : 0;
+				$uid    = ( '' !== $speelveld )
+					? strtolower( untrailingslashit( $speelveld ) ) . '|' . (int) $ts
+					: ( 'm:' . ( isset( $row['uuid'] ) ? (string) $row['uuid'] : md5( $tijdstip . '|' . $poule ) ) );
+				$entry  = array(
+					'uid'             => $uid,
+					'field_slug'      => $slug,
+					'field_label'     => $label,
+					'hall_hint'       => $hall,
+					'duration_min'    => $lengte > 0 ? $lengte : 0,
+					'poule'           => $poule,
+					'is_recreational' => self::poule_is_recreational( $poule ),
 				);
 				$by_ts[ (int) $ts ][] = $entry;
 				// Ook op minuut voor losse seconden-mismatch.
@@ -570,6 +587,16 @@ class VTC_TP_Nevobo {
 		}
 
 		return $by_ts;
+	}
+
+	/**
+	 * Nevobo-poule in recreantencompetitie / -toernooi / mastercompetitie.
+	 *
+	 * @param string $poule Poule IRI/pad.
+	 */
+	public static function poule_is_recreational( $poule ) {
+		$p = strtolower( (string) $poule );
+		return ( '' !== $p && false !== strpos( $p, 'recreanten' ) );
 	}
 
 	/**
