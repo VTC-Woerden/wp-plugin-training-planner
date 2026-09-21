@@ -331,10 +331,12 @@ class VTC_TP_Public {
 					if ( ! empty( $ev['conflict'] ) ) {
 						$cls .= ' vtc-tp-block--conflict';
 					}
-					$bg = self::event_block_color( $ev );
-					echo '<div class="' . esc_attr( $cls ) . '" style="left:' . esc_attr( (string) round( $left_pct, 4 ) ) . '%;width:' . esc_attr( (string) round( $width_pct, 4 ) ) . '%;background:' . esc_attr( $bg ) . '">';
+					$bg  = self::event_block_color( $ev );
+					$tip = self::event_tooltip_text( $ev, $start, $end, $lane_label );
+					echo '<div class="' . esc_attr( $cls ) . '" style="left:' . esc_attr( (string) round( $left_pct, 4 ) ) . '%;width:' . esc_attr( (string) round( $width_pct, 4 ) ) . '%;background:' . esc_attr( $bg ) . '" tabindex="0" title="' . esc_attr( $tip ) . '" aria-label="' . esc_attr( $tip ) . '">';
 					echo '<span class="vtc-tp-block-title">' . esc_html( $ev['title'] ) . '</span>';
 					echo '<span class="vtc-tp-block-times"><span class="vtc-tp-block-start">' . esc_html( $start->format( 'H:i' ) ) . '</span><span class="vtc-tp-block-sep" aria-hidden="true">–</span><span class="vtc-tp-block-end">' . esc_html( $end->format( 'H:i' ) ) . '</span></span>';
+					echo '<span class="vtc-tp-block-tip" role="tooltip">' . esc_html( $tip ) . '</span>';
 					echo '</div>';
 				}
 				echo '</div>';
@@ -547,6 +549,32 @@ class VTC_TP_Public {
 	/**
 	 * @param array<string, mixed> $ev
 	 */
+	/**
+	 * Volledige tekst voor tooltip / aria (korte blokken zijn anders onleesbaar).
+	 *
+	 * @param array<string, mixed> $ev
+	 */
+	private static function event_tooltip_text( array $ev, DateTimeImmutable $start, DateTimeImmutable $end, $lane_label ) {
+		$parts = array();
+		$title = isset( $ev['title'] ) ? trim( (string) $ev['title'] ) : '';
+		if ( $title ) {
+			$parts[] = $title;
+		}
+		$sub = isset( $ev['subtitle'] ) ? trim( (string) $ev['subtitle'] ) : '';
+		if ( $sub ) {
+			$parts[] = $sub;
+		}
+		$parts[] = $start->format( 'H:i' ) . ' – ' . $end->format( 'H:i' );
+		$lane = trim( (string) $lane_label );
+		if ( $lane ) {
+			$parts[] = $lane;
+		}
+		if ( ! empty( $ev['conflict'] ) ) {
+			$parts[] = __( 'Conflict (overlap)', 'vtc-training-planner' );
+		}
+		return implode( "\n", $parts );
+	}
+
 	private static function event_block_color( array $ev ) {
 		if ( isset( $ev['type'] ) && 'match' === $ev['type'] ) {
 			return '#2271b1';
