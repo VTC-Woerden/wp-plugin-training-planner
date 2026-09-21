@@ -303,7 +303,7 @@ class VTC_TP_Admin {
 			case 'save_settings':
 				update_option( 'vtc_tp_cache_ttl', max( 60, absint( $_POST['cache_ttl'] ?? 1800 ) ) );
 				$scope = sanitize_text_field( wp_unslash( $_POST['matches_scope'] ?? 'home_halls' ) );
-				update_option( 'vtc_tp_matches_scope', in_array( $scope, array( 'home_halls', 'all' ), true ) ? $scope : 'home_halls' );
+				update_option( 'vtc_tp_matches_scope', in_array( $scope, array( 'home_halls', 'all', 'none' ), true ) ? $scope : 'home_halls' );
 				add_settings_error( 'vtc_tp', 'ok', __( 'Instellingen opgeslagen.', 'vtc-training-planner' ), 'success' );
 				break;
 
@@ -1026,7 +1026,8 @@ class VTC_TP_Admin {
 						<th><?php esc_html_e( 'Wedstrijden in weekoverzicht', 'vtc-training-planner' ); ?></th>
 						<td>
 							<label><input type="radio" name="matches_scope" value="home_halls" <?php checked( $scope, 'home_halls' ); ?> /> <?php esc_html_e( 'Alleen in eigen zalen (match met locatienaam uit stamdata)', 'vtc-training-planner' ); ?></label><br />
-							<label><input type="radio" name="matches_scope" value="all" <?php checked( $scope, 'all' ); ?> /> <?php esc_html_e( 'Alle clubwedstrijden in de week (thuis en uit)', 'vtc-training-planner' ); ?></label>
+							<label><input type="radio" name="matches_scope" value="all" <?php checked( $scope, 'all' ); ?> /> <?php esc_html_e( 'Alle clubwedstrijden in de week (thuis en uit)', 'vtc-training-planner' ); ?></label><br />
+							<label><input type="radio" name="matches_scope" value="none" <?php checked( $scope, 'none' ); ?> /> <?php esc_html_e( 'Geen wedstrijden (alleen trainingsschema)', 'vtc-training-planner' ); ?></label>
 						</td>
 					</tr>
 				</table>

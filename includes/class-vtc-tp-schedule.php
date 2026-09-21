@@ -458,6 +458,37 @@ class VTC_TP_Schedule {
 				return $a['start_ts'] <=> $b['start_ts'];
 			}
 		);
+		return $this->trim_match_ends_before_next_on_field( $events );
+	}
+
+	/**
+	 * Standaard 2u; als de volgende wedstrijd op hetzelfde veld eerder begint, eindig vóór die start.
+	 *
+	 * @param array<int, array<string, mixed>> $events Al gesorteerd op start_ts.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function trim_match_ends_before_next_on_field( array $events ) {
+		$by_field = array();
+		foreach ( $events as $i => $ev ) {
+			$key = isset( $ev['hall_key'] ) ? (string) $ev['hall_key'] : '';
+			if ( '' === $key ) {
+				$key = 'i:' . $i;
+			}
+			$by_field[ $key ][] = $i;
+		}
+		foreach ( $by_field as $indices ) {
+			$n = count( $indices );
+			for ( $j = 0; $j < $n - 1; $j++ ) {
+				$ia = $indices[ $j ];
+				$ib = $indices[ $j + 1 ];
+				$next_start = (int) $events[ $ib ]['start_ts'];
+				$cur_start  = (int) $events[ $ia ]['start_ts'];
+				$cur_end    = (int) $events[ $ia ]['end_ts'];
+				if ( $next_start > $cur_start && $next_start < $cur_end ) {
+					$events[ $ia ]['end_ts'] = $next_start;
+				}
+			}
+		}
 		return $events;
 	}
 
@@ -595,17 +626,22 @@ class VTC_TP_Schedule {
 		$train  = $this->expand_slots_to_events( $norm, $slots, $bp_eff, $apply_team_rotation );
 
 		$code = $this->db->get_nevobo_code();
-		$raw  = $nevobo->get_club_schedule_matches( $code );
-		$week = $nevobo->filter_matches_in_iso_week( $raw, $norm );
-		$week = $nevobo->enrich_matches_with_speelveld( $week, $code, $norm );
+		$scope = get_option( 'vtc_tp_matches_scope', 'home_halls' );
+		$week  = array();
 
-		$scope   = get_option( 'vtc_tp_matches_scope', 'home_halls' );
-		$bp_base = $this->db->get_base_blueprint_id();
-		if ( 'home_halls' === $scope ) {
-			$locs = $this->db->get_locations( $bp_base );
-			$week = $nevobo->filter_home_hall_matches( $week, $locs );
+		if ( 'none' !== $scope ) {
+			$raw  = $nevobo->get_club_schedule_matches( $code );
+			$week = $nevobo->filter_matches_in_iso_week( $raw, $norm );
+			$week = $nevobo->enrich_matches_with_speelveld( $week, $code, $norm );
+
+			$bp_base = $this->db->get_base_blueprint_id();
+			if ( 'home_halls' === $scope ) {
+				$locs = $this->db->get_locations( $bp_base );
+				$week = $nevobo->filter_home_hall_matches( $week, $locs );
+			}
 		}
 
+		$bp_base  = $this->db->get_base_blueprint_id();
 		$venues   = $this->db->get_venues_for_blueprint( $bp_eff );
 		$match_ev = $this->matches_to_events( $week, $venues );
 		$train    = $this->coalesce_shared_training_slots( $train );
