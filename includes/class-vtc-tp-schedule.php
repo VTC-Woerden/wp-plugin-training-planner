@@ -568,12 +568,12 @@ class VTC_TP_Schedule {
 		if ( empty( $venues ) ) {
 			return $out;
 		}
-		$slug = isset( $m['field_slug'] ) ? strtolower( (string) $m['field_slug'] ) : '';
+		$slug = isset( $m['field_slug'] ) ? VTC_TP_Zaaltaken::normalize_field_slug( (string) $m['field_slug'] ) : '';
 		$vn   = isset( $m['venue_name'] ) ? strtolower( (string) $m['venue_name'] ) : '';
 
 		$candidates = array();
 		foreach ( $venues as $v ) {
-			$vslug = ! empty( $v->nevobo_field_slug ) ? strtolower( (string) $v->nevobo_field_slug ) : '';
+			$vslug = ! empty( $v->nevobo_field_slug ) ? VTC_TP_Zaaltaken::normalize_field_slug( (string) $v->nevobo_field_slug ) : '';
 			$vname = isset( $v->name ) ? strtolower( (string) $v->name ) : '';
 			$loc   = isset( $v->location_name ) ? strtolower( (string) $v->location_name ) : '';
 			$nvn   = ! empty( $v->nevobo_venue_name ) ? strtolower( (string) $v->nevobo_venue_name ) : '';
