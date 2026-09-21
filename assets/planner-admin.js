@@ -253,7 +253,8 @@
 		coTeamPickerSlotId: 0,
 		coTeamPickerAnchorX: 0,
 		coTeamPickerAnchorY: 0,
-		coTeamPickerDocBound: false
+		coTeamPickerDocBound: false,
+		advancedOpen: false
 	};
 
 	var pending = {
@@ -1222,10 +1223,11 @@
 		html += '<div class="vtc-tppl vtc-tppl--load-error">';
 		html += '<div class="vtc-tppl-toolbar">';
 		html += '<div class="vtc-tppl-toolbar-row vtc-tppl-toolbar-row--main">';
-		html += '<h2>' + esc(__('loadErr')) + '</h2>';
-		html += '<div class="vtc-tppl-schedule-view" role="tablist">';
-		html += '<button type="button" class="button vtc-tppl-view-btn' + (!weekSel ? ' is-active' : '') + '" data-schedule-view="blueprint">' + esc(__('viewBlueprint')) + '</button>';
-		html += '<button type="button" class="button vtc-tppl-view-btn' + (weekSel ? ' is-active' : '') + '" data-schedule-view="week">' + esc(__('viewWeek')) + '</button>';
+		html += '<div class="vtc-tppl-toolbar-left">';
+		html += '<div class="vtc-tppl-toggle vtc-tppl-schedule-view" role="tablist" aria-label="' + esc(__('viewBlueprint')) + ' / ' + esc(__('viewWeek')) + '">';
+		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-view-btn' + (!weekSel ? ' is-active' : '') + '" data-schedule-view="blueprint" role="tab" aria-selected="' + (!weekSel ? 'true' : 'false') + '">' + esc(__('viewBlueprint')) + '</button>';
+		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-view-btn' + (weekSel ? ' is-active' : '') + '" data-schedule-view="week" role="tab" aria-selected="' + (weekSel ? 'true' : 'false') + '">' + esc(__('viewWeek')) + '</button>';
+		html += '</div>';
 		html += '</div>';
 		html += '<div class="vtc-tppl-actions">';
 		html += '<button type="button" class="button" id="vtc-tppl-reload">' + esc(__('reload')) + '</button>';
@@ -1267,14 +1269,15 @@
 		html += '<div class="vtc-tppl' + (inhuur ? ' vtc-tppl--inhuur' : '') + (weekScope ? ' vtc-tppl--week-scope' : '') + (publishedView ? ' vtc-tppl--viewing-published' : '') + '">';
 		html += '<div class="vtc-tppl-toolbar">';
 		html += '<div class="vtc-tppl-toolbar-row vtc-tppl-toolbar-row--main">';
-		html += '<h2>' + esc(weekScope ? (String(__('viewWeek')) + ': ' + (d.iso_week || state.isoWeek)) : String(__('viewBlueprint'))) + '</h2>';
-		html += '<div class="vtc-tppl-schedule-view" role="tablist">';
-		html += '<button type="button" class="button vtc-tppl-view-btn' + (!weekScope ? ' is-active' : '') + '" data-schedule-view="blueprint">' + esc(__('viewBlueprint')) + '</button>';
-		html += '<button type="button" class="button vtc-tppl-view-btn' + (weekScope ? ' is-active' : '') + '" data-schedule-view="week">' + esc(__('viewWeek')) + '</button>';
+		html += '<div class="vtc-tppl-toolbar-left">';
+		html += '<div class="vtc-tppl-toggle vtc-tppl-schedule-view" role="tablist" aria-label="' + esc(__('viewBlueprint')) + ' / ' + esc(__('viewWeek')) + '">';
+		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-view-btn' + (!weekScope ? ' is-active' : '') + '" data-schedule-view="blueprint" role="tab" aria-selected="' + (!weekScope ? 'true' : 'false') + '">' + esc(__('viewBlueprint')) + '</button>';
+		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-view-btn' + (weekScope ? ' is-active' : '') + '" data-schedule-view="week" role="tab" aria-selected="' + (weekScope ? 'true' : 'false') + '">' + esc(__('viewWeek')) + '</button>';
 		html += '</div>';
-		html += '<div class="vtc-tppl-mode" role="tablist">';
-		html += '<button type="button" class="button vtc-tppl-mode-btn' + (!inhuur ? ' is-active' : '') + '" data-mode="teams">' + esc(__('modeTeams')) + '</button>';
-		html += '<button type="button" class="button vtc-tppl-mode-btn' + (inhuur ? ' is-active' : '') + '" data-mode="inhuur"' + (weekScope ? ' disabled' : '') + ' title="' + esc(__('modeInhuur')) + '">' + esc(__('modeInhuur')) + '</button>';
+		html += '<div class="vtc-tppl-toggle vtc-tppl-mode" role="tablist" aria-label="' + esc(__('modeTeams')) + ' / ' + esc(__('modeInhuur')) + '">';
+		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-mode-btn' + (!inhuur ? ' is-active' : '') + '" data-mode="teams" role="tab" aria-selected="' + (!inhuur ? 'true' : 'false') + '">' + esc(__('modeTeams')) + '</button>';
+		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-mode-btn' + (inhuur ? ' is-active' : '') + '" data-mode="inhuur"' + (weekScope ? ' disabled' : '') + ' role="tab" aria-selected="' + (inhuur ? 'true' : 'false') + '" title="' + esc(__('modeInhuur')) + '">' + esc(__('modeInhuur')) + '</button>';
+		html += '</div>';
 		html += '</div>';
 		html += '<div class="vtc-tppl-actions">';
 		html += '<button type="button" class="button button-primary" id="vtc-tppl-save" disabled>' + esc(saveButtonLabel()) + '</button>';
@@ -1310,30 +1313,40 @@
 		var bpOptions = (state.blueprintsList && state.blueprintsList.length)
 			? state.blueprintsList
 			: (d.blueprint_id ? [{ id: d.blueprint_id, name: d.blueprint_name || ('#' + d.blueprint_id), kind: d.blueprint_kind != null ? d.blueprint_kind : 0 }] : []);
-		if (!weekScope && bpOptions.length) {
-			html += '<div class="vtc-tppl-toolbar-row vtc-tppl-blueprint-bar">';
-			html += '<label class="vtc-tppl-blueprint-field"><span>' + esc(__('blueprintLabel')) + '</span> ';
-			html += '<select id="vtc-tppl-blueprint-select">';
-			bpOptions.forEach(function (b) {
-				var sel = Number(b.id) === Number(curBp) ? ' selected' : '';
-				var lab = b.name + (Number(b.kind) === 1 ? ' (afw.)' : '');
-				html += '<option value="' + esc(String(b.id)) + '"' + sel + '>' + esc(lab) + '</option>';
-			});
-			html += '</select></label></div>';
+		var showAdvanced = !weekScope && (bpOptions.length || (d.versions && d.versions.length));
+		if (publishedView) {
+			state.advancedOpen = true;
 		}
-		if (!weekScope && d.versions && d.versions.length) {
-			var activeVid = d.editing_version_id || d.published_version_id;
-			html += '<div class="vtc-tppl-toolbar-row vtc-tppl-version-bar">';
-			html += '<label class="vtc-tppl-version-field"><span>' + esc(__('versionLabel')) + '</span> ';
-			html += '<select id="vtc-tppl-version-select"' + (publishedView ? ' disabled' : '') + '>';
-			d.versions.forEach(function (v) {
-				var sel = Number(v.id) === Number(activeVid) ? ' selected' : '';
-				var lab = (v.label || ('#' + v.id)) + (v.is_published ? ' ' + __('versionLive') : '');
-				html += '<option value="' + esc(String(v.id)) + '"' + sel + '>' + esc(lab) + '</option>';
-			});
-			html += '</select></label> ';
-			html += '<button type="button" class="button" id="vtc-tppl-new-version"' + (publishedView ? ' disabled' : '') + '>' + esc(__('newConceptVersion')) + '</button>';
-			html += ' <button type="button" class="button" id="vtc-tppl-toggle-published"' + (!d.published_version_id ? ' disabled' : '') + '>' + esc(publishedView ? __('backToDraftView') : __('viewPublishedBlueprint')) + '</button>';
+		if (showAdvanced) {
+			html += '<div class="vtc-tppl-toolbar-row vtc-tppl-advanced-bar">';
+			html += '<button type="button" class="button-link vtc-tppl-advanced-toggle" id="vtc-tppl-advanced-toggle" aria-expanded="' + (state.advancedOpen ? 'true' : 'false') + '" aria-controls="vtc-tppl-advanced-panel">';
+			html += esc(__('advancedToggle')) + (state.advancedOpen ? ' ▴' : ' ▾');
+			html += '</button>';
+			html += '<div class="vtc-tppl-advanced-panel" id="vtc-tppl-advanced-panel"' + (state.advancedOpen ? '' : ' hidden') + '>';
+			if (bpOptions.length) {
+				html += '<label class="vtc-tppl-blueprint-field"><span>' + esc(__('blueprintLabel')) + '</span> ';
+				html += '<select id="vtc-tppl-blueprint-select">';
+				bpOptions.forEach(function (b) {
+					var sel = Number(b.id) === Number(curBp) ? ' selected' : '';
+					var lab = b.name + (Number(b.kind) === 1 ? ' (afw.)' : '');
+					html += '<option value="' + esc(String(b.id)) + '"' + sel + '>' + esc(lab) + '</option>';
+				});
+				html += '</select></label>';
+			}
+			if (d.versions && d.versions.length) {
+				var activeVid = d.editing_version_id || d.published_version_id;
+				html += '<label class="vtc-tppl-version-field"><span>' + esc(__('versionLabel')) + '</span> ';
+				html += '<select id="vtc-tppl-version-select"' + (publishedView ? ' disabled' : '') + '>';
+				d.versions.forEach(function (v) {
+					var sel = Number(v.id) === Number(activeVid) ? ' selected' : '';
+					var lab = (v.label || ('#' + v.id)) + (v.is_published ? ' ' + __('versionLive') : '');
+					html += '<option value="' + esc(String(v.id)) + '"' + sel + '>' + esc(lab) + '</option>';
+				});
+				html += '</select></label>';
+				html += '<button type="button" class="button" id="vtc-tppl-new-version"' + (publishedView ? ' disabled' : '') + '>' + esc(__('newConceptVersion')) + '</button>';
+				html += '<button type="button" class="button" id="vtc-tppl-toggle-published"' + (!d.published_version_id ? ' disabled' : '') + '>' + esc(publishedView ? __('backToDraftView') : __('viewPublishedBlueprint')) + '</button>';
+			}
+			html += '</div>';
 			html += '</div>';
 		}
 		if (!weekScope && publishedView) {
@@ -1487,6 +1500,17 @@
 		if (reloadBtn) {
 			reloadBtn.addEventListener('click', function () {
 				loadPlanner({ force: true, initial: true });
+			});
+		}
+
+		var advancedToggle = document.getElementById('vtc-tppl-advanced-toggle');
+		if (advancedToggle) {
+			advancedToggle.addEventListener('click', function () {
+				state.advancedOpen = !state.advancedOpen;
+				var panel = document.getElementById('vtc-tppl-advanced-panel');
+				if (panel) panel.hidden = !state.advancedOpen;
+				advancedToggle.setAttribute('aria-expanded', state.advancedOpen ? 'true' : 'false');
+				advancedToggle.textContent = __('advancedToggle') + (state.advancedOpen ? ' ▴' : ' ▾');
 			});
 		}
 

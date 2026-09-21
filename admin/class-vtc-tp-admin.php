@@ -105,6 +105,7 @@ class VTC_TP_Admin {
 						'noTeamsSidebar' => __( 'Nog geen teams in stamdata — alleen inhuur is hier zinvol, of voeg teams toe.', 'vtc-training-planner' ),
 						'viewBlueprint' => __( 'Blauwdruk', 'vtc-training-planner' ),
 						'viewWeek' => __( 'Week', 'vtc-training-planner' ),
+						'advancedToggle' => __( 'Geavanceerd', 'vtc-training-planner' ),
 						'weekIsoLabel' => __( 'ISO-week', 'vtc-training-planner' ),
 						'weekHelp' => __( 'Kies een ISO-week. Zonder afwijkende week zie je het blauwdruk-rooster ter referentie (niet bewerkbaar). Met een afwijkende week overschrijf je dat rooster alleen voor die week op de site.', 'vtc-training-planner' ),
 						'weekNoExceptionHint' => __( 'Geen afwijkende week voor deze week — onderstaand patroon komt uit de blauwdruk (concept/gepubliceerd). Klik op de knop om een afwijkende week te starten (kopie van dat patroon).', 'vtc-training-planner' ),
