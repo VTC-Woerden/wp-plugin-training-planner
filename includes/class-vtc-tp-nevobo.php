@@ -41,7 +41,7 @@ class VTC_TP_Nevobo {
 	 * @return string
 	 */
 	public static function cache_key_for_code( $code ) {
-		return 'vtc_tp_nevobo_prog_v2_' . $code;
+		return 'vtc_tp_nevobo_prog_v3_' . $code;
 	}
 
 	/**
@@ -326,12 +326,30 @@ class VTC_TP_Nevobo {
 			}
 		}
 
-		// Nevobo-code in description: "Wedstrijd: 3000XC2K1 ED" → XC2K1-ED.
-		if ( $desc && preg_match( '/Wedstrijd:\s*\d*([A-Za-z0-9]+)\s+([A-Za-z0-9]{1,3})\b/u', $desc, $cm ) ) {
-			$match['match_code'] = strtoupper( $cm[1] . '-' . $cm[2] );
+		// Nevobo-code in description: "Wedstrijd: 3000JB2E1 AC" → JB2E1-AC (niet 3000JB2E1-AC).
+		if ( $desc && preg_match( '/Wedstrijd:\s*([A-Za-z0-9]+)\s+([A-Za-z0-9]{1,3})\b/u', $desc, $cm ) ) {
+			$match['match_code'] = self::normalize_match_code( $cm[1] . '-' . $cm[2] );
 		}
 
 		return $match;
+	}
+
+	/**
+	 * Strip seizoen-/regioprefix (3000, 9000) van Nevobo-wedstrijdcodes.
+	 *
+	 * @param string $code Ruwe code.
+	 * @return string
+	 */
+	public static function normalize_match_code( $code ) {
+		$code = strtoupper( trim( (string) $code ) );
+		if ( '' === $code ) {
+			return '';
+		}
+		// 3000JB2E1-AC → JB2E1-AC; 90001CH-GA → 1CH-GA.
+		if ( preg_match( '/^(\d{3,4})([A-Z].*)$/', $code, $m ) ) {
+			$code = $m[2];
+		}
+		return $code;
 	}
 
 	/**
@@ -436,7 +454,7 @@ class VTC_TP_Nevobo {
 			}
 
 			$vn    = isset( $m['venue_name'] ) ? strtolower( (string) $m['venue_name'] ) : '';
-			$want  = ! empty( $m['match_code'] ) ? strtoupper( (string) $m['match_code'] ) : '';
+			$want  = ! empty( $m['match_code'] ) ? VTC_TP_Nevobo::normalize_match_code( (string) $m['match_code'] ) : '';
 			$pick  = null;
 			$pool  = array();
 			foreach ( $candidates as $c ) {
@@ -449,10 +467,10 @@ class VTC_TP_Nevobo {
 			if ( empty( $pool ) ) {
 				continue;
 			}
-			// Exacte wedstrijdcode (uit wedstrijd-planner) voorkomt verwarring bij gelijke starttijden.
+			// Exacte wedstrijdcode (uit RSS/planner) voorkomt verwarring bij gelijke starttijden.
 			if ( $want ) {
 				foreach ( $pool as $c ) {
-					$cc = isset( $c['match_code'] ) ? strtoupper( (string) $c['match_code'] ) : '';
+					$cc = isset( $c['match_code'] ) ? VTC_TP_Nevobo::normalize_match_code( (string) $c['match_code'] ) : '';
 					if ( $cc && $cc === $want ) {
 						$pick = $c;
 						break;
@@ -514,7 +532,7 @@ class VTC_TP_Nevobo {
 		$from = ( new DateTimeImmutable( '@' . (int) $range[0] ) )->setTimezone( $tz )->format( 'Y-m-d' );
 		$to   = ( new DateTimeImmutable( '@' . ( (int) $range[1] - 1 ) ) )->setTimezone( $tz )->format( 'Y-m-d' );
 
-		$cache_key = 'vtc_tp_nevobo_fields_v3_' . $code . '_' . $iso_week;
+		$cache_key = 'vtc_tp_nevobo_fields_v5_' . $code . '_' . $iso_week;
 		$cached    = get_transient( $cache_key );
 		if ( false !== $cached && is_array( $cached ) ) {
 			return $cached;

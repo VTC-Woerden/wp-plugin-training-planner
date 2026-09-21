@@ -45,7 +45,7 @@ class VTC_TP_Zaaltaken {
 			return $empty;
 		}
 
-		$cache_key = 'vtc_tp_zaaltaken_v2_' . $iso_week;
+		$cache_key = 'vtc_tp_zaaltaken_v4_' . $iso_week;
 		$cached    = get_transient( $cache_key );
 		if ( false !== $cached && is_array( $cached ) ) {
 			return $cached;
@@ -74,7 +74,7 @@ class VTC_TP_Zaaltaken {
 			return $out;
 		}
 		foreach ( $rows as $row ) {
-			$code = isset( $row->code ) ? strtoupper( trim( (string) $row->code ) ) : '';
+			$code = isset( $row->code ) ? VTC_TP_Nevobo::normalize_match_code( (string) $row->code ) : '';
 			$ts   = ! empty( $row->datum ) ? strtotime( (string) $row->datum ) : false;
 			$veld = isset( $row->veld ) ? trim( (string) $row->veld ) : '';
 			$item = array(
@@ -127,7 +127,7 @@ class VTC_TP_Zaaltaken {
 	public static function resolve_for_match( array $match, array $index ) {
 		$code = '';
 		if ( ! empty( $match['match_code'] ) ) {
-			$code = strtoupper( trim( (string) $match['match_code'] ) );
+			$code = VTC_TP_Nevobo::normalize_match_code( (string) $match['match_code'] );
 		}
 		$row = null;
 		if ( $code && isset( $index['by_code'][ $code ] ) ) {
@@ -151,7 +151,8 @@ class VTC_TP_Zaaltaken {
 						if ( '' === $thuis_n || '' === $home_n ) {
 							continue;
 						}
-						if ( $thuis_n === $home_n || false !== strpos( $home_n, $thuis_n ) || false !== strpos( $thuis_n, $home_n ) ) {
+						// Alleen exact of gelijk na strip clubprefix — geen losse "vtc woerden"-substring.
+						if ( $thuis_n === $home_n || self::teams_equivalent( $home_n, $thuis_n ) ) {
 							$row = $cand;
 							break;
 						}
@@ -169,6 +170,16 @@ class VTC_TP_Zaaltaken {
 			'veld'           => (string) ( $row['veld'] ?? '' ),
 			'field_slug'     => (string) ( $row['field_slug'] ?? '' ),
 		);
+	}
+
+	/**
+	 * @param string $a Genormaliseerde teamnaam.
+	 * @param string $b Genormaliseerde teamnaam.
+	 */
+	private static function teams_equivalent( $a, $b ) {
+		$a2 = preg_replace( '/^vtc\s+woerden\s+/', '', $a );
+		$b2 = preg_replace( '/^vtc\s+woerden\s+/', '', $b );
+		return ( $a2 && $b2 && $a2 === $b2 );
 	}
 
 	/**
