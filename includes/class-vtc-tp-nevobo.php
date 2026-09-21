@@ -45,6 +45,29 @@ class VTC_TP_Nevobo {
 	}
 
 	/**
+	 * Wis programma- + speelveld-transients voor een clubcode.
+	 *
+	 * @param string $nevobo_code Ruwe of genormaliseerde code.
+	 */
+	public static function clear_caches_for_code( $nevobo_code ) {
+		$code = self::normalize_club_code( $nevobo_code );
+		if ( '' === $code ) {
+			return;
+		}
+		delete_transient( self::cache_key_for_code( $code ) );
+		global $wpdb;
+		// Speelveld-index per week: vtc_tp_nevobo_fields_{code}_{iso}.
+		$like = $wpdb->esc_like( '_transient_vtc_tp_nevobo_fields_' . $code . '_' ) . '%';
+		$keys = $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s", $like ) );
+		foreach ( $keys as $opt ) {
+			$key = preg_replace( '/^_transient_/', '', (string) $opt );
+			if ( $key ) {
+				delete_transient( $key );
+			}
+		}
+	}
+
+	/**
 	 * Parsed matches from club programma RSS (cached).
 	 *
 	 * @param string $nevobo_code Clubcode.
@@ -366,5 +389,213 @@ class VTC_TP_Nevobo {
 			}
 		}
 		return $out;
+	}
+
+	/**
+	 * Verrijk RSS-wedstrijden met speelveld-slug uit de Nevobo JSON-API (RSS heeft geen veld).
+	 *
+	 * @param array<int, array<string, mixed>> $matches RSS-matches (na weekfilter).
+	 * @param string                           $nevobo_code Clubcode.
+	 * @param string                           $iso_week ISO-week.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function enrich_matches_with_speelveld( array $matches, $nevobo_code, $iso_week ) {
+		if ( empty( $matches ) ) {
+			return $matches;
+		}
+		$code = self::normalize_club_code( $nevobo_code );
+		$norm = VTC_TP_Schedule::normalize_iso_week( (string) $iso_week );
+		if ( '' === $code || ! $norm ) {
+			return $matches;
+		}
+
+		$by_ts = $this->fetch_speelveld_index_for_week( $code, $norm );
+		if ( empty( $by_ts ) ) {
+			return $matches;
+		}
+
+		$used = array();
+		foreach ( $matches as &$m ) {
+			$ts = isset( $m['datetime_ts'] ) ? (int) $m['datetime_ts'] : 0;
+			if ( $ts <= 0 ) {
+				continue;
+			}
+			$candidates = isset( $by_ts[ $ts ] ) ? $by_ts[ $ts ] : array();
+			if ( empty( $candidates ) ) {
+				// Minuut-afronding (RSS vs API timezone/seconden).
+				$minute     = $ts - ( $ts % 60 );
+				$candidates = isset( $by_ts[ $minute ] ) ? $by_ts[ $minute ] : array();
+			}
+			if ( empty( $candidates ) ) {
+				continue;
+			}
+
+			$vn   = isset( $m['venue_name'] ) ? strtolower( (string) $m['venue_name'] ) : '';
+			$pick = null;
+			$pool = array();
+			foreach ( $candidates as $c ) {
+				$uid = isset( $c['uid'] ) ? (string) $c['uid'] : '';
+				if ( $uid && isset( $used[ $uid ] ) ) {
+					continue;
+				}
+				$pool[] = $c;
+			}
+			if ( empty( $pool ) ) {
+				continue;
+			}
+			if ( $vn ) {
+				foreach ( $pool as $c ) {
+					$hint = isset( $c['hall_hint'] ) ? strtolower( (string) $c['hall_hint'] ) : '';
+					if ( $hint && ( false !== strpos( $vn, $hint ) || false !== strpos( $hint, $vn ) ) ) {
+						$pick = $c;
+						break;
+					}
+				}
+			}
+			if ( null === $pick ) {
+				$pick = $pool[0];
+			}
+			if ( ! empty( $pick['uid'] ) ) {
+				$used[ (string) $pick['uid'] ] = true;
+			}
+			if ( ! empty( $pick['field_slug'] ) ) {
+				$m['field_slug'] = $pick['field_slug'];
+			}
+			if ( ! empty( $pick['field_label'] ) ) {
+				$m['field_label'] = $pick['field_label'];
+			}
+		}
+		unset( $m );
+
+		return $matches;
+	}
+
+	/**
+	 * @param string $code Genormaliseerde clubcode.
+	 * @param string $iso_week Genormaliseerde ISO-week.
+	 * @return array<int, array<int, array{field_slug:string,field_label:string,hall_hint:string}>>
+	 */
+	private function fetch_speelveld_index_for_week( $code, $iso_week ) {
+		$range = VTC_TP_Schedule::iso_week_range_utc_boundaries( $iso_week );
+		if ( ! $range ) {
+			return array();
+		}
+		$tz = wp_timezone();
+		$from = ( new DateTimeImmutable( '@' . (int) $range[0] ) )->setTimezone( $tz )->format( 'Y-m-d' );
+		$to   = ( new DateTimeImmutable( '@' . ( (int) $range[1] - 1 ) ) )->setTimezone( $tz )->format( 'Y-m-d' );
+
+		$cache_key = 'vtc_tp_nevobo_fields_' . $code . '_' . $iso_week;
+		$cached    = get_transient( $cache_key );
+		if ( false !== $cached && is_array( $cached ) ) {
+			return $cached;
+		}
+
+		$vereniging = '/relatiebeheer/verenigingen/' . $code;
+		$query      = array(
+			'vereniging'    => $vereniging,
+			'datum[after]'  => $from,
+			'datum[before]' => $to,
+			'itemsPerPage'  => 100,
+		);
+		$url  = 'https://api.nevobo.nl/competitie/wedstrijden?' . http_build_query( $query, '', '&', PHP_QUERY_RFC3986 );
+		$by_ts = array();
+		$guard = 0;
+		while ( $url && $guard < 10 ) {
+			++$guard;
+			$payload = $this->http_get_json( $url );
+			if ( null === $payload ) {
+				break;
+			}
+			$members = array();
+			if ( isset( $payload['hydra:member'] ) && is_array( $payload['hydra:member'] ) ) {
+				$members = $payload['hydra:member'];
+			}
+			foreach ( $members as $row ) {
+				if ( ! is_array( $row ) ) {
+					continue;
+				}
+				$tijdstip = isset( $row['tijdstip'] ) ? (string) $row['tijdstip'] : '';
+				$ts       = $tijdstip ? strtotime( $tijdstip ) : false;
+				if ( ! $ts ) {
+					continue;
+				}
+				$speelveld = isset( $row['speelveld'] ) ? (string) $row['speelveld'] : '';
+				if ( '' === $speelveld ) {
+					continue;
+				}
+				$slug = strtolower( basename( untrailingslashit( $speelveld ) ) );
+				// veld-3 → "Veld 3"; veld-h1 → "Veld H1".
+				$label = $slug;
+				if ( preg_match( '/^veld-(.+)$/i', $slug, $mm ) ) {
+					$label = sprintf(
+						/* translators: %s: field code/number */
+						__( 'Veld %s', 'vtc-training-planner' ),
+						strtoupper( (string) $mm[1] )
+					);
+				}
+				$hall = '';
+				if ( ! empty( $row['speelzaal'] ) ) {
+					$parts = explode( '/', trim( (string) $row['speelzaal'], '/' ) );
+					$hall  = str_replace( '-', ' ', (string) end( $parts ) );
+				}
+				$entry = array(
+					'uid'         => strtolower( untrailingslashit( $speelveld ) ) . '|' . (int) $ts,
+					'field_slug'  => $slug,
+					'field_label' => $label,
+					'hall_hint'   => $hall,
+				);
+				$by_ts[ (int) $ts ][] = $entry;
+				// Ook op minuut voor losse seconden-mismatch.
+				$minute = (int) $ts - ( (int) $ts % 60 );
+				if ( $minute !== (int) $ts ) {
+					$by_ts[ $minute ][] = $entry;
+				}
+			}
+			$next = '';
+			if ( isset( $payload['hydra:view']['hydra:next'] ) ) {
+				$next = (string) $payload['hydra:view']['hydra:next'];
+			}
+			if ( $next && 0 === strpos( $next, '/' ) ) {
+				$url = 'https://api.nevobo.nl' . $next;
+			} elseif ( $next && 0 === strpos( $next, 'http' ) ) {
+				$url = $next;
+			} else {
+				$url = '';
+			}
+		}
+
+		if ( ! empty( $by_ts ) ) {
+			$ttl = max( 60, (int) get_option( 'vtc_tp_cache_ttl', 1800 ) );
+			set_transient( $cache_key, $by_ts, $ttl );
+		}
+
+		return $by_ts;
+	}
+
+	/**
+	 * @param string $url Absolute URL.
+	 * @return array<string, mixed>|null
+	 */
+	private function http_get_json( $url ) {
+		$response = wp_remote_get(
+			$url,
+			array(
+				'timeout'    => 20,
+				'headers'    => array(
+					'Accept' => 'application/ld+json, application/json',
+				),
+				'user-agent' => 'VTC-Training-Planner/' . VTC_TP_VERSION . '; ' . home_url( '/' ),
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return null;
+		}
+		$code = (int) wp_remote_retrieve_response_code( $response );
+		if ( $code < 200 || $code >= 300 ) {
+			return null;
+		}
+		$body = wp_remote_retrieve_body( $response );
+		$data = json_decode( $body, true );
+		return is_array( $data ) ? $data : null;
 	}
 }

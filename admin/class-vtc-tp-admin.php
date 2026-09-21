@@ -309,6 +309,7 @@ class VTC_TP_Admin {
 
 			case 'refresh_nevobo_feed':
 				$code = $this->db->get_nevobo_code();
+				VTC_TP_Nevobo::clear_caches_for_code( $code );
 				$probe = $this->nevobo->probe_club_feed( $code, true );
 				if ( ! empty( $probe['error'] ) && (int) $probe['item_count'] < 1 ) {
 					add_settings_error(
@@ -348,10 +349,10 @@ class VTC_TP_Admin {
 				);
 				$new_code = VTC_TP_Nevobo::normalize_club_code( $this->db->get_nevobo_code() );
 				if ( $old_code ) {
-					delete_transient( VTC_TP_Nevobo::cache_key_for_code( $old_code ) );
+					VTC_TP_Nevobo::clear_caches_for_code( $old_code );
 				}
 				if ( $new_code ) {
-					delete_transient( VTC_TP_Nevobo::cache_key_for_code( $new_code ) );
+					VTC_TP_Nevobo::clear_caches_for_code( $new_code );
 				}
 				add_settings_error( 'vtc_tp', 'club', __( 'Verenigingsgegevens opgeslagen.', 'vtc-training-planner' ), 'success' );
 				break;

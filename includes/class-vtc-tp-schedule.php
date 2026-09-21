@@ -413,11 +413,13 @@ class VTC_TP_Schedule {
 
 	/**
 	 * Nevobo matches as timeline events (datetime from RSS item; end = +2h guess if unknown).
+	 * Koppelt speelveld aan stamdata-velden via field_slug / veldnaam.
 	 *
 	 * @param array<int, array<string, mixed>> $matches
+	 * @param array<int, object>               $venues  Venues met location_name + nevobo_field_slug.
 	 * @return array<int, array<string, mixed>>
 	 */
-	public function matches_to_events( array $matches ) {
+	public function matches_to_events( array $matches, array $venues = array() ) {
 		$tz     = wp_timezone();
 		$events = array();
 		foreach ( $matches as $m ) {
@@ -434,16 +436,20 @@ class VTC_TP_Schedule {
 				$title = isset( $m['title'] ) ? $m['title'] : __( 'Wedstrijd', 'vtc-training-planner' );
 			}
 			$vname = isset( $m['venue_name'] ) ? (string) $m['venue_name'] : '';
+			$resolved = $this->resolve_match_venue( $m, $venues );
+			$vid   = $resolved['venue_id'];
+			$loc   = $resolved['location_label'] !== '' ? $resolved['location_label'] : $vname;
+			$field = $resolved['field_label'];
 			$events[] = array(
 				'type'           => 'match',
 				'start_ts'       => $start_dt->getTimestamp(),
 				'end_ts'         => $end_dt->getTimestamp(),
 				'title'          => $title,
 				'subtitle'       => __( 'Wedstrijd', 'vtc-training-planner' ),
-				'venue_id'       => null,
-				'location_label' => $vname,
-				'field_label'    => '',
-				'hall_key'       => $vname ? strtolower( $vname ) : 'm:' . md5( $title ),
+				'venue_id'       => $vid,
+				'location_label' => $loc,
+				'field_label'    => $field,
+				'hall_key'       => $vid ? ( 'v:' . $vid ) : ( $vname ? strtolower( $vname ) : 'm:' . md5( $title ) ),
 			);
 		}
 		usort(
@@ -453,6 +459,74 @@ class VTC_TP_Schedule {
 			}
 		);
 		return $events;
+	}
+
+	/**
+	 * Koppel Nevobo-match aan een stamdata-veld (nevobo_field_slug of naam "Veld N").
+	 *
+	 * @param array<string, mixed> $m
+	 * @param array<int, object>   $venues
+	 * @return array{venue_id:?int,location_label:string,field_label:string}
+	 */
+	private function resolve_match_venue( array $m, array $venues ) {
+		$out = array(
+			'venue_id'       => null,
+			'location_label' => '',
+			'field_label'    => isset( $m['field_label'] ) ? (string) $m['field_label'] : '',
+		);
+		if ( empty( $venues ) ) {
+			return $out;
+		}
+		$slug = isset( $m['field_slug'] ) ? strtolower( (string) $m['field_slug'] ) : '';
+		$vn   = isset( $m['venue_name'] ) ? strtolower( (string) $m['venue_name'] ) : '';
+
+		$candidates = array();
+		foreach ( $venues as $v ) {
+			$vslug = ! empty( $v->nevobo_field_slug ) ? strtolower( (string) $v->nevobo_field_slug ) : '';
+			$vname = isset( $v->name ) ? strtolower( (string) $v->name ) : '';
+			$loc   = isset( $v->location_name ) ? strtolower( (string) $v->location_name ) : '';
+			$nvn   = ! empty( $v->nevobo_venue_name ) ? strtolower( (string) $v->nevobo_venue_name ) : '';
+
+			$hall_ok = true;
+			if ( $vn ) {
+				$hall_ok = ( $loc && ( false !== strpos( $vn, $loc ) || false !== strpos( $loc, $vn ) ) )
+					|| ( $nvn && ( false !== strpos( $vn, $nvn ) || false !== strpos( $nvn, $vn ) ) );
+			}
+			if ( ! $hall_ok ) {
+				continue;
+			}
+
+			$score = 0;
+			if ( $slug && $vslug && $slug === $vslug ) {
+				$score = 100;
+			} elseif ( $slug && preg_match( '/(\d+)/', $slug, $sm ) ) {
+				$num = $sm[1];
+				if ( $vname && ( $vname === 'veld ' . $num || $vname === 'veld-' . $num || false !== strpos( $vname, $num ) ) ) {
+					$score = 80;
+				}
+				if ( $vslug && false !== strpos( $vslug, $num ) ) {
+					$score = max( $score, 70 );
+				}
+			}
+			if ( $score > 0 ) {
+				$candidates[] = array( 'score' => $score, 'venue' => $v );
+			}
+		}
+
+		if ( empty( $candidates ) ) {
+			return $out;
+		}
+		usort(
+			$candidates,
+			function ( $a, $b ) {
+				return $b['score'] <=> $a['score'];
+			}
+		);
+		$best = $candidates[0]['venue'];
+		$out['venue_id']       = (int) $best->id;
+		$out['location_label'] = isset( $best->location_name ) ? (string) $best->location_name : '';
+		$out['field_label']    = isset( $best->name ) ? (string) $best->name : $out['field_label'];
+		return $out;
 	}
 
 	/**
@@ -523,6 +597,7 @@ class VTC_TP_Schedule {
 		$code = $this->db->get_nevobo_code();
 		$raw  = $nevobo->get_club_schedule_matches( $code );
 		$week = $nevobo->filter_matches_in_iso_week( $raw, $norm );
+		$week = $nevobo->enrich_matches_with_speelveld( $week, $code, $norm );
 
 		$scope   = get_option( 'vtc_tp_matches_scope', 'home_halls' );
 		$bp_base = $this->db->get_base_blueprint_id();
@@ -531,7 +606,8 @@ class VTC_TP_Schedule {
 			$week = $nevobo->filter_home_hall_matches( $week, $locs );
 		}
 
-		$match_ev = $this->matches_to_events( $week );
+		$venues   = $this->db->get_venues_for_blueprint( $bp_eff );
+		$match_ev = $this->matches_to_events( $week, $venues );
 		$train    = $this->coalesce_shared_training_slots( $train );
 		$events   = $this->merge_and_flag_conflicts( $train, $match_ev );
 
