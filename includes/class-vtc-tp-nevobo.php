@@ -514,7 +514,7 @@ class VTC_TP_Nevobo {
 		$from = ( new DateTimeImmutable( '@' . (int) $range[0] ) )->setTimezone( $tz )->format( 'Y-m-d' );
 		$to   = ( new DateTimeImmutable( '@' . ( (int) $range[1] - 1 ) ) )->setTimezone( $tz )->format( 'Y-m-d' );
 
-		$cache_key = 'vtc_tp_nevobo_fields_v4_' . $code . '_' . $iso_week;
+		$cache_key = 'vtc_tp_nevobo_fields_v3_' . $code . '_' . $iso_week;
 		$cached    = get_transient( $cache_key );
 		if ( false !== $cached && is_array( $cached ) ) {
 			return $cached;
@@ -553,7 +553,7 @@ class VTC_TP_Nevobo {
 				$slug      = '';
 				$label     = '';
 				if ( '' !== $speelveld ) {
-					$slug  = VTC_TP_Zaaltaken::normalize_field_slug( strtolower( basename( untrailingslashit( $speelveld ) ) ) );
+					$slug  = strtolower( basename( untrailingslashit( $speelveld ) ) );
 					$label = $slug;
 					if ( preg_match( '/^veld-(.+)$/i', $slug, $mm ) ) {
 						$label = sprintf(

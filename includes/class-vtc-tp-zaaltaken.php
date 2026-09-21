@@ -45,7 +45,7 @@ class VTC_TP_Zaaltaken {
 			return $empty;
 		}
 
-		$cache_key = 'vtc_tp_zaaltaken_v3_' . $iso_week;
+		$cache_key = 'vtc_tp_zaaltaken_v2_' . $iso_week;
 		$cached    = get_transient( $cache_key );
 		if ( false !== $cached && is_array( $cached ) ) {
 			return $cached;
@@ -101,7 +101,7 @@ class VTC_TP_Zaaltaken {
 	}
 
 	/**
-	 * Sporthal-Excel veld ("4", "H1") → stamdata-slug (veld-4 / veld-1; H1 = veld 1).
+	 * Sporthal-Excel veld ("4", "H1") → Nevobo slug (veld-4, veld-h1).
 	 *
 	 * @param string $veld
 	 */
@@ -111,31 +111,12 @@ class VTC_TP_Zaaltaken {
 			return '';
 		}
 		if ( 0 === strpos( $v, 'veld-' ) ) {
-			return self::normalize_field_slug( $v );
+			return $v;
 		}
 		if ( 0 === strpos( $v, 'veld ' ) ) {
 			$v = trim( substr( $v, 5 ) );
 		}
-		return self::normalize_field_slug( 'veld-' . $v );
-	}
-
-	/**
-	 * Nevobo "veld-h1" (hoofdveld) = stamdata veld 1.
-	 *
-	 * @param string $slug
-	 */
-	public static function normalize_field_slug( $slug ) {
-		$slug = strtolower( trim( (string) $slug ) );
-		if ( '' === $slug ) {
-			return '';
-		}
-		if ( 'veld-h1' === $slug || 'h1' === $slug ) {
-			return 'veld-1';
-		}
-		if ( preg_match( '/^veld-h(\d+)$/', $slug, $m ) ) {
-			return 'veld-' . $m[1];
-		}
-		return $slug;
+		return 'veld-' . $v;
 	}
 
 	/**
@@ -227,7 +208,7 @@ class VTC_TP_Zaaltaken {
 	 * @param string $slug
 	 */
 	public static function field_slug_to_label( $slug ) {
-		$slug = self::normalize_field_slug( $slug );
+		$slug = strtolower( (string) $slug );
 		if ( preg_match( '/^veld-(.+)$/i', $slug, $mm ) ) {
 			return sprintf(
 				/* translators: %s: field code/number */
