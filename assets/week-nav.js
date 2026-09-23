@@ -63,17 +63,8 @@
 				if (!data || !data.html) {
 					throw new Error('no html');
 				}
-				// Keuze "toon het rooster toch" meenemen naar de nieuwe week.
-				var revealed = !!qs('.vtc-tp-rotate-toggle:checked', inner);
-
 				inner.innerHTML = data.html;
 
-				if (revealed) {
-					var toggle = qs('.vtc-tp-rotate-toggle', inner);
-					if (toggle) {
-						toggle.checked = true;
-					}
-				}
 				if (title && data.week_label) {
 					title.textContent = data.week_label;
 				}

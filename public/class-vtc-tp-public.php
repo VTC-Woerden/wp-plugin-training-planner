@@ -238,24 +238,6 @@ class VTC_TP_Public {
 			$day_names = VTC_TP_Schedule::team_day_names();
 		}
 
-		// Portrait op smalle schermen: kantel-instructie i.p.v. de geknepen tijdlijn; CSS schakelt tussen beide.
-		if ( $public_week_layout ) {
-			$rotate_id = wp_unique_id( 'vtc-tp-rotate-' );
-			echo '<input type="checkbox" id="' . esc_attr( $rotate_id ) . '" class="vtc-tp-rotate-toggle">';
-			echo '<div class="vtc-tp-rotate-hint">';
-			echo '<svg class="vtc-tp-rotate-icon" viewBox="0 0 100 64" role="presentation" aria-hidden="true" focusable="false">';
-			echo '<rect x="8" y="6" width="28" height="52" rx="4" fill="none" stroke="currentColor" stroke-width="2.5"/>';
-			echo '<line x1="17" y1="52" x2="27" y2="52" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>';
-			echo '<rect x="52" y="18" width="40" height="28" rx="4" fill="none" stroke="currentColor" stroke-width="2.5" opacity="0.5"/>';
-			echo '<path d="M40 18 Q52 4 66 12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>';
-			echo '<path d="M66 12 l-8 -1 M66 12 l-2 8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>';
-			echo '</svg>';
-			echo '<p class="vtc-tp-rotate-title">' . esc_html__( 'Draai je telefoon een kwartslag', 'vtc-training-planner' ) . '</p>';
-			echo '<p class="vtc-tp-rotate-text">' . esc_html__( 'In liggende stand past het volledige weekrooster op je scherm, inclusief alle begin- en eindtijden.', 'vtc-training-planner' ) . '</p>';
-			echo '<label class="vtc-tp-rotate-fallback" for="' . esc_attr( $rotate_id ) . '">' . esc_html__( 'Kantelen niet mogelijk? Toon het rooster toch', 'vtc-training-planner' ) . '</label>';
-			echo '</div>';
-		}
-
 		echo '<div class="vtc-tp-days">';
 
 		for ( $i = 0; $i < 7; $i++ ) {
