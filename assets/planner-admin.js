@@ -175,6 +175,9 @@
 			if (s.team_mode !== 'rotate') s.team_mode = 'together';
 			if (!s.co_team_ids.length) s.team_mode = 'together';
 		});
+		if (!Array.isArray(data.matches)) {
+			data.matches = [];
+		}
 		if (typeof data.rotation_anchor_iso_week !== 'string') {
 			data.rotation_anchor_iso_week = '';
 		}
@@ -1382,6 +1385,7 @@
 				html += '<p class="vtc-tppl-week-hint vtc-tppl-week-hint--deviation">' + esc(__('deviationActiveWeek')) + '</p>';
 			}
 			html += '<p class="vtc-tppl-week-hint">' + esc(d.has_exception ? __('weekHasExceptionHint') : __('weekNoExceptionHint')) + '</p>';
+			html += '<p class="vtc-tppl-week-hint">' + esc(__('weekMatchesHint')) + '</p>';
 		}
 		if (inhuur) {
 			html += '<p class="vtc-tppl-inhuur-banner">' + esc(__('inhuurBanner')) + '</p>';
@@ -1494,6 +1498,37 @@
 						html += '<span class="vtc-tppl-block-time">' + esc(s.start_time + '–' + s.end_time) + '</span>';
 						if (!gridReadonly) {
 							html += '<div class="vtc-tppl-block-resize vtc-tppl-block-resize--right" data-slot-id="' + s.id + '"></div>';
+						}
+						html += '</div>';
+					});
+				}
+				if (weekScope) {
+					(d.matches || []).forEach(function (m) {
+						if (m.day_of_week !== dow || m.venue_id !== v.id) return;
+						if (slotStyleWidthPct(m.start_time, m.end_time, dow) < 0.0001) return;
+						var mCls = 'vtc-tppl-block vtc-tppl-block--match' + (m.conflict ? ' vtc-tppl-block--match-conflict' : '');
+						var tipParts = [m.title, m.start_time + '–' + m.end_time];
+						if (m.scheidsrechter) {
+							tipParts.push(__('matchReferee') + ': ' + m.scheidsrechter);
+						}
+						if (m.teller) {
+							tipParts.push(__('matchScorer') + ': ' + m.teller);
+						}
+						if (m.conflict) {
+							tipParts.push(__('matchConflict'));
+						}
+						html += '<div class="' + mCls + '" title="' + esc(tipParts.join('\n')) + '" style="left:' + slotStyleLeftPct(m.start_time, dow) + '%;width:' + slotStyleWidthPct(m.start_time, m.end_time, dow) + '%">';
+						html += '<span class="vtc-tppl-block-title">' + esc(m.title) + '</span>';
+						html += '<span class="vtc-tppl-block-time">' + esc(m.start_time + '–' + m.end_time) + '</span>';
+						if (m.scheidsrechter || m.teller) {
+							html += '<span class="vtc-tppl-block-zaaltaken">';
+							if (m.scheidsrechter) {
+								html += '<span class="vtc-tppl-block-zaak">' + esc(__('matchRefereeShort') + ': ' + m.scheidsrechter) + '</span>';
+							}
+							if (m.teller) {
+								html += '<span class="vtc-tppl-block-zaak">' + esc(__('matchScorerShort') + ': ' + m.teller) + '</span>';
+							}
+							html += '</span>';
 						}
 						html += '</div>';
 					});
@@ -1793,7 +1828,7 @@
 		}
 
 		if (!inhuur) {
-			root.querySelectorAll('.vtc-tppl-block:not(.vtc-tppl-block--baseline)').forEach(function (block) {
+			root.querySelectorAll('.vtc-tppl-block:not(.vtc-tppl-block--baseline):not(.vtc-tppl-block--match)').forEach(function (block) {
 				block.addEventListener('pointerdown', onBlockPointerDown);
 				block.addEventListener('dblclick', onBlockDblClick);
 			});

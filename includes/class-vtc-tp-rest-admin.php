@@ -278,6 +278,83 @@ class VTC_TP_Rest_Admin {
 	}
 
 	/**
+	 * Nevobo-wedstrijden (+ zaaltaken) voor de visuele weekplanner.
+	 *
+	 * @param string $iso_week Genormaliseerde ISO-week.
+	 * @param int    $bp       Effectieve blauwdruk (voor venue-fallback).
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function planner_matches_for_week( $iso_week, $bp ) {
+		$scope = get_option( 'vtc_tp_matches_scope', 'home_halls' );
+		if ( 'none' === $scope ) {
+			return array();
+		}
+
+		$schedule = new VTC_TP_Schedule( $this->db );
+		$nevobo   = new VTC_TP_Nevobo( $this->db );
+		$merged   = $schedule->get_merged_week( $iso_week, $nevobo, false );
+		$venues   = $this->db->get_venues_for_blueprint( (int) $bp );
+		$tz       = wp_timezone();
+		$out      = array();
+		$n        = 0;
+
+		foreach ( $merged['events'] as $ev ) {
+			if ( ! isset( $ev['type'] ) || 'match' !== $ev['type'] ) {
+				continue;
+			}
+			$vid = isset( $ev['venue_id'] ) ? (int) $ev['venue_id'] : 0;
+			if ( $vid <= 0 ) {
+				$vid = $this->guess_venue_id_for_match_event( $ev, $venues );
+			}
+			if ( $vid <= 0 ) {
+				continue;
+			}
+			$start = ( new DateTimeImmutable( '@' . (int) $ev['start_ts'] ) )->setTimezone( $tz );
+			$end   = ( new DateTimeImmutable( '@' . (int) $ev['end_ts'] ) )->setTimezone( $tz );
+			// Team-app: maandag = 0 … zondag = 6 (ISO N = 1…7).
+			$dow = (int) $start->format( 'N' ) - 1;
+			++$n;
+			$out[] = array(
+				'id'             => 'm-' . (int) $ev['start_ts'] . '-' . $vid . '-' . $n,
+				'venue_id'       => $vid,
+				'day_of_week'    => $dow,
+				'start_time'     => $start->format( 'H:i' ),
+				'end_time'       => $end->format( 'H:i' ),
+				'title'          => isset( $ev['title'] ) ? (string) $ev['title'] : __( 'Wedstrijd', 'vtc-training-planner' ),
+				'scheidsrechter' => isset( $ev['scheidsrechter'] ) ? (string) $ev['scheidsrechter'] : '',
+				'teller'         => isset( $ev['teller'] ) ? (string) $ev['teller'] : '',
+				'conflict'       => ! empty( $ev['conflict'] ),
+			);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Als speelveld ontbreekt: eerste stamdata-veld in dezelfde zaal.
+	 *
+	 * @param array<string, mixed> $ev
+	 * @param array<int, object>   $venues
+	 * @return int
+	 */
+	private function guess_venue_id_for_match_event( array $ev, array $venues ) {
+		$needle = isset( $ev['location_label'] ) ? strtolower( trim( (string) $ev['location_label'] ) ) : '';
+		if ( '' === $needle ) {
+			return 0;
+		}
+		foreach ( $venues as $v ) {
+			$loc = isset( $v->location_name ) ? strtolower( (string) $v->location_name ) : '';
+			$nvn = ! empty( $v->nevobo_venue_name ) ? strtolower( (string) $v->nevobo_venue_name ) : '';
+			$ok  = ( $loc && ( false !== strpos( $needle, $loc ) || false !== strpos( $loc, $needle ) ) )
+				|| ( $nvn && ( false !== strpos( $needle, $nvn ) || false !== strpos( $nvn, $needle ) ) );
+			if ( $ok ) {
+				return (int) $v->id;
+			}
+		}
+		return 0;
+	}
+
+	/**
 	 * Planner-slot voor API/JS (één blok met samengestelde teamnaam).
 	 *
 	 * @param object               $s            DB-rij slot_draft / slot_published / exception_slot.
@@ -510,6 +587,7 @@ class VTC_TP_Rest_Admin {
 		}
 
 		$dev_row = $this->db->get_deviation_week_row( $norm );
+		$matches = $this->planner_matches_for_week( $norm, $bp );
 
 		return rest_ensure_response(
 			array(
@@ -526,6 +604,7 @@ class VTC_TP_Rest_Admin {
 				'venues'                    => $venues_out,
 				'slots'                     => $out_slots,
 				'baseline_slots'            => $baseline_slots,
+				'matches'                   => $matches,
 				'unavailability'            => $out_un,
 				'exception_weeks'           => $ew_list,
 				'draft_differs'             => $this->db->draft_differs_from_published( $bp ),

@@ -736,6 +736,37 @@
 	filter: saturate(0.92);
 }
 
+/* Nevobo-thuiswedstrijden in weekweergave (alleen-lezen) */
+.vtc-tppl-block--match {
+	background: #2271b1 !important;
+	cursor: default;
+	pointer-events: auto;
+	z-index: 4;
+	opacity: 0.95;
+}
+
+.vtc-tppl-block--match-conflict {
+	box-shadow: 0 0 0 2px #d63638, 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.vtc-tppl-block-zaaltaken {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	margin-top: 2px;
+	font-size: 9px;
+	font-weight: 500;
+	line-height: 1.25;
+	opacity: 0.95;
+	text-shadow: none;
+}
+
+.vtc-tppl-block-zaak {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .vtc-tppl--week-scope .vtc-tppl-unavail {
 	pointer-events: none;
 	opacity: 0.88;
