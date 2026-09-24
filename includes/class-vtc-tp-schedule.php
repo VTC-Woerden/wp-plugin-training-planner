@@ -674,9 +674,13 @@ class VTC_TP_Schedule {
 	/**
 	 * Full pipeline for public/admin week view.
 	 *
+	 * @param string               $iso_week
+	 * @param VTC_TP_Nevobo        $nevobo
+	 * @param bool                 $apply_team_rotation
+	 * @param string|null          $matches_scope Override voor wedstrijdfilter (`home_halls`|`all`|`none`); null = optie `vtc_tp_matches_scope` (voorkant).
 	 * @return array{events: array, iso_week: string, used_exceptions: bool}
 	 */
-	public function get_merged_week( $iso_week, VTC_TP_Nevobo $nevobo, $apply_team_rotation = false ) {
+	public function get_merged_week( $iso_week, VTC_TP_Nevobo $nevobo, $apply_team_rotation = false, $matches_scope = null ) {
 		$norm = self::normalize_iso_week( $iso_week ) ?: self::current_iso_week();
 
 		$bp_eff = $this->db->get_effective_blueprint_id_for_iso_week( $norm );
@@ -684,9 +688,14 @@ class VTC_TP_Schedule {
 		$ex     = $this->db->get_exception_week( $bp_eff, $norm );
 		$train  = $this->expand_slots_to_events( $norm, $slots, $bp_eff, $apply_team_rotation );
 
-		$code = $this->db->get_nevobo_code();
-		$scope = get_option( 'vtc_tp_matches_scope', 'home_halls' );
-		$week  = array();
+		$code  = $this->db->get_nevobo_code();
+		$scope = null !== $matches_scope
+			? (string) $matches_scope
+			: (string) get_option( 'vtc_tp_matches_scope', 'home_halls' );
+		if ( ! in_array( $scope, array( 'home_halls', 'all', 'none' ), true ) ) {
+			$scope = 'home_halls';
+		}
+		$week = array();
 
 		if ( 'none' !== $scope ) {
 			$raw  = $nevobo->get_club_schedule_matches( $code );

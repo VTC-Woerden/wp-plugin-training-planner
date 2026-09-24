@@ -278,21 +278,18 @@ class VTC_TP_Rest_Admin {
 	}
 
 	/**
-	 * Nevobo-wedstrijden (+ zaaltaken) voor de visuele weekplanner.
+	 * Nevobo-thuiswedstrijden (+ zaaltaken) voor de visuele weekplanner.
+	 * Onafhankelijk van de voorkant-optie `vtc_tp_matches_scope` (altijd eigen zalen).
 	 *
 	 * @param string $iso_week Genormaliseerde ISO-week.
 	 * @param int    $bp       Effectieve blauwdruk (voor venue-fallback).
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function planner_matches_for_week( $iso_week, $bp ) {
-		$scope = get_option( 'vtc_tp_matches_scope', 'home_halls' );
-		if ( 'none' === $scope ) {
-			return array();
-		}
-
 		$schedule = new VTC_TP_Schedule( $this->db );
 		$nevobo   = new VTC_TP_Nevobo( $this->db );
-		$merged   = $schedule->get_merged_week( $iso_week, $nevobo, false );
+		// Admin-planner: altijd thuiswedstrijden in eigen zalen, los van voorkant-instelling.
+		$merged   = $schedule->get_merged_week( $iso_week, $nevobo, false, 'home_halls' );
 		$venues   = $this->db->get_venues_for_blueprint( (int) $bp );
 		$tz       = wp_timezone();
 		$out      = array();

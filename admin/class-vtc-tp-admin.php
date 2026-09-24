@@ -146,7 +146,9 @@ class VTC_TP_Admin {
 						'matchRefereeShort' => __( 'S', 'vtc-training-planner' ),
 						'matchScorerShort' => __( 'T', 'vtc-training-planner' ),
 						'matchConflict' => __( 'Conflict (overlap met training)', 'vtc-training-planner' ),
-						'weekMatchesHint' => __( 'Blauwe blokken zijn thuiswedstrijden (Nevobo) met scheids/teller uit de wedstrijdplanner.', 'vtc-training-planner' ),
+						'weekMatchesHint' => __( 'Blauwe blokken zijn thuiswedstrijden (Nevobo) met scheids/teller uit de wedstrijdplanner. Los van de voorkant-instelling; zet aan/uit via “Wedstrijden tonen”.', 'vtc-training-planner' ),
+						'showMatches' => __( 'Wedstrijden tonen', 'vtc-training-planner' ),
+						'showMatchesTitle' => __( 'Thuiswedstrijden in dit overzicht (alleen planner; heeft geen invloed op de website)', 'vtc-training-planner' ),
 						'teamModeTogether' => __( 'Samen', 'vtc-training-planner' ),
 						'teamModeRotate' => __( 'Rouleren', 'vtc-training-planner' ),
 						'teamModeToggleTitle' => __( 'Samen trainen of om de beurt (roulatie)', 'vtc-training-planner' ),
@@ -1030,11 +1032,12 @@ class VTC_TP_Admin {
 						<td><input name="cache_ttl" id="cache_ttl" type="number" min="60" step="60" value="<?php echo esc_attr( (string) $ttl ); ?>" /></td>
 					</tr>
 					<tr>
-						<th><?php esc_html_e( 'Wedstrijden in weekoverzicht', 'vtc-training-planner' ); ?></th>
+						<th><?php esc_html_e( 'Wedstrijden op de website', 'vtc-training-planner' ); ?></th>
 						<td>
 							<label><input type="radio" name="matches_scope" value="home_halls" <?php checked( $scope, 'home_halls' ); ?> /> <?php esc_html_e( 'Alleen in eigen zalen (match met locatienaam uit stamdata)', 'vtc-training-planner' ); ?></label><br />
 							<label><input type="radio" name="matches_scope" value="all" <?php checked( $scope, 'all' ); ?> /> <?php esc_html_e( 'Alle clubwedstrijden in de week (thuis en uit)', 'vtc-training-planner' ); ?></label><br />
 							<label><input type="radio" name="matches_scope" value="none" <?php checked( $scope, 'none' ); ?> /> <?php esc_html_e( 'Geen wedstrijden (alleen trainingsschema)', 'vtc-training-planner' ); ?></label>
+							<p class="description"><?php esc_html_e( 'Geldt alleen voor het publieke weekoverzicht. In Rooster (visueel) → Week kun je wedstrijden apart aan/uit zetten.', 'vtc-training-planner' ); ?></p>
 						</td>
 					</tr>
 				</table>

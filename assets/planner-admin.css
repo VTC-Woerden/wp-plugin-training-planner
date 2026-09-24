@@ -171,6 +171,16 @@
 	font: inherit;
 }
 
+.vtc-tppl-matches-toggle {
+	margin-left: 4px;
+	user-select: none;
+	cursor: pointer;
+}
+
+.vtc-tppl-matches-toggle input[type="checkbox"] {
+	margin: 0;
+}
+
 .vtc-tppl-week-hint {
 	margin: 0 0 12px;
 	padding: 8px 12px;

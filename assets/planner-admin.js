@@ -46,6 +46,7 @@
 	var ISO_WEEK_KEY = 'vtcTpIsoWeek';
 	var BLUEPRINT_ID_KEY = 'vtcTpBlueprintId';
 	var VIEW_PUBLISHED_KEY = 'vtcTpViewPublished';
+	var SHOW_MATCHES_KEY = 'vtcTpShowMatches';
 
 	function setViewPublishedPref(on) {
 		try {
@@ -78,6 +79,24 @@
 		} catch (e) {
 			return 'teams';
 		}
+	}
+
+	function loadShowMatches() {
+		try {
+			var v = sessionStorage.getItem(SHOW_MATCHES_KEY);
+			if (v === null || v === '') return true;
+			return v !== '0' && v !== 'false';
+		} catch (eSm) {
+			return true;
+		}
+	}
+
+	function setShowMatches(on) {
+		state.showMatches = !!on;
+		try {
+			sessionStorage.setItem(SHOW_MATCHES_KEY, state.showMatches ? '1' : '0');
+		} catch (eSm2) { /* ignore */ }
+		render();
 	}
 
 	function loadScheduleView() {
@@ -235,6 +254,7 @@
 		scheduleView: loadScheduleView(),
 		isoWeek: loadIsoWeek(),
 		workMode: loadWorkMode(),
+		showMatches: loadShowMatches(),
 		toastTimer: null,
 		keydownBound: false,
 		beforeunloadBound: false,
@@ -1318,6 +1338,9 @@
 			} else {
 				html += '<button type="button" class="button" id="vtc-tppl-delete-exception">' + esc(__('deleteExceptionWeek')) + '</button>';
 			}
+			html += '<label class="vtc-tppl-week-field vtc-tppl-matches-toggle" title="' + esc(__('showMatchesTitle')) + '">';
+			html += '<input type="checkbox" id="vtc-tppl-show-matches"' + (state.showMatches ? ' checked' : '') + ' /> ';
+			html += '<span>' + esc(__('showMatches')) + '</span></label>';
 			html += '</div>';
 		}
 		var curBp = effectiveBlueprintIdForApi();
@@ -1385,7 +1408,9 @@
 				html += '<p class="vtc-tppl-week-hint vtc-tppl-week-hint--deviation">' + esc(__('deviationActiveWeek')) + '</p>';
 			}
 			html += '<p class="vtc-tppl-week-hint">' + esc(d.has_exception ? __('weekHasExceptionHint') : __('weekNoExceptionHint')) + '</p>';
-			html += '<p class="vtc-tppl-week-hint">' + esc(__('weekMatchesHint')) + '</p>';
+			if (state.showMatches) {
+				html += '<p class="vtc-tppl-week-hint">' + esc(__('weekMatchesHint')) + '</p>';
+			}
 		}
 		if (inhuur) {
 			html += '<p class="vtc-tppl-inhuur-banner">' + esc(__('inhuurBanner')) + '</p>';
@@ -1502,7 +1527,7 @@
 						html += '</div>';
 					});
 				}
-				if (weekScope) {
+				if (weekScope && state.showMatches) {
 					(d.matches || []).forEach(function (m) {
 						if (m.day_of_week !== dow || m.venue_id !== v.id) return;
 						if (slotStyleWidthPct(m.start_time, m.end_time, dow) < 0.0001) return;
@@ -1659,6 +1684,13 @@
 				setScheduleView(btn.getAttribute('data-schedule-view'));
 			});
 		});
+
+		var showMatchesCb = document.getElementById('vtc-tppl-show-matches');
+		if (showMatchesCb) {
+			showMatchesCb.addEventListener('change', function () {
+				setShowMatches(!!showMatchesCb.checked);
+			});
+		}
 
 		var saveBtn = document.getElementById('vtc-tppl-save');
 		if (saveBtn) {
