@@ -413,6 +413,17 @@
 	transition: box-shadow 0.12s, transform 0.12s;
 }
 
+.vtc-tppl-sidebar-complete-heading {
+	margin-top: 14px;
+}
+
+.vtc-tppl-team-chip--complete {
+	opacity: 0.55;
+	color: #646970;
+	background: #f0f0f1;
+	border-color: #dcdcde;
+}
+
 .vtc-tppl-team-chip:hover {
 	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }

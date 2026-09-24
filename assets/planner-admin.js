@@ -596,6 +596,14 @@
 		return out;
 	}
 
+	function buildSidebarTeamChipHtml(row, isComplete, gridReadonly) {
+		var dragAttr = gridReadonly ? '' : ' draggable="true"';
+		var cls = 'vtc-tppl-team-chip' + (isComplete ? ' vtc-tppl-team-chip--complete' : '');
+		var label = row.display_name + ' (' + row.count + '/' + row.required + ')';
+		var title = __('teamOverviewChipTitle') + ': ' + row.count + '/' + row.required;
+		return '<button type="button" class="' + cls + '"' + dragAttr + ' data-team-id="' + row.id + '" title="' + esc(title) + '" style="border-left:4px solid ' + teamColor(row.id) + '">' + esc(label) + '</button>';
+	}
+
 	function computePlacementFromPoint(body, clientX) {
 		var venueId = parseInt(body.getAttribute('data-venue-id'), 10);
 		var dow = parseInt(body.getAttribute('data-dow'), 10);
@@ -1393,10 +1401,27 @@
 				if (!gridReadonly) {
 					html += '<p class="vtc-tppl-sidebar-hint vtc-tppl-sidebar-hint--overview">' + esc(__('teamOverviewLaneHelp')) + '</p>';
 				}
+				var incompleteTeams = [];
+				var completeTeams = [];
 				d.teams.forEach(function (t) {
-					var dragAttr = gridReadonly ? '' : ' draggable="true"';
-					html += '<button type="button" class="vtc-tppl-team-chip"' + dragAttr + ' data-team-id="' + t.id + '" style="border-left:4px solid ' + teamColor(t.id) + '">' + esc(t.display_name) + '</button>';
+					var req = teamTrainingsRequired(t);
+					var cnt = countSlotsForTeam(t.id, weekReadonly);
+					var row = { id: t.id, display_name: t.display_name, count: cnt, required: req };
+					if (req > 0 && cnt < req) {
+						incompleteTeams.push(row);
+					} else {
+						completeTeams.push(row);
+					}
 				});
+				incompleteTeams.forEach(function (row) {
+					html += buildSidebarTeamChipHtml(row, false, gridReadonly);
+				});
+				if (completeTeams.length) {
+					html += '<h3 class="vtc-tppl-sidebar-complete-heading">' + esc(__('teamsFullyScheduled')) + '</h3>';
+					completeTeams.forEach(function (row) {
+						html += buildSidebarTeamChipHtml(row, true, gridReadonly);
+					});
+				}
 			} else {
 				html += '<p class="vtc-tppl-sidebar-hint">' + esc(__('noTeamsSidebar')) + '</p>';
 			}

@@ -140,6 +140,7 @@ class VTC_TP_Admin {
 						'teamOverviewClose' => __( 'Sluiten', 'vtc-training-planner' ),
 						'teamOverviewChipTitle' => __( 'Gepland / nodig', 'vtc-training-planner' ),
 						'teamOverviewLaneHelp' => __( 'Klik op een lege baan: kies een team; de training komt op die tijd en plek. Of sleep een team vanuit de zijbalk.', 'vtc-training-planner' ),
+						'teamsFullyScheduled' => __( 'Volledig ingepland', 'vtc-training-planner' ),
 						'teamModeTogether' => __( 'Samen', 'vtc-training-planner' ),
 						'teamModeRotate' => __( 'Rouleren', 'vtc-training-planner' ),
 						'teamModeToggleTitle' => __( 'Samen trainen of om de beurt (roulatie)', 'vtc-training-planner' ),
