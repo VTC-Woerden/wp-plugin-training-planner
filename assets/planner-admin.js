@@ -197,6 +197,9 @@
 		if (!Array.isArray(data.matches)) {
 			data.matches = [];
 		}
+		if (!Array.isArray(data.always_show)) {
+			data.always_show = [];
+		}
 		if (typeof data.rotation_anchor_iso_week !== 'string') {
 			data.rotation_anchor_iso_week = '';
 		}
@@ -602,6 +605,59 @@
 			}
 		}
 		return c;
+	}
+
+	function isAlwaysShow(venueId, dow) {
+		var list = (state.data && state.data.always_show) || [];
+		for (var i = 0; i < list.length; i++) {
+			if (list[i].venue_id === venueId && list[i].day_of_week === dow) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	function setAlwaysShowLocal(venueId, dow, enabled) {
+		if (!state.data) return;
+		var list = Array.isArray(state.data.always_show) ? state.data.always_show.slice() : [];
+		list = list.filter(function (row) {
+			return !(row.venue_id === venueId && row.day_of_week === dow);
+		});
+		if (enabled) {
+			var label = '';
+			(state.data.venues || []).forEach(function (v) {
+				if (v.id === venueId) label = v.label;
+			});
+			list.push({
+				venue_id: venueId,
+				day_of_week: dow,
+				label: label
+			});
+		}
+		state.data.always_show = list;
+	}
+
+	function toggleAlwaysShow(venueId, dow, enabled, checkboxEl) {
+		api('admin/venue-always-show', {
+			method: 'POST',
+			body: JSON.stringify(withBlueprintBody({
+				venue_id: venueId,
+				day_of_week: dow,
+				enabled: !!enabled
+			}))
+		})
+			.then(function (res) {
+				if (res && Array.isArray(res.always_show)) {
+					state.data.always_show = res.always_show;
+				} else {
+					setAlwaysShowLocal(venueId, dow, enabled);
+				}
+				showToast(enabled ? __('alwaysShowOn') : __('alwaysShowOff'), true);
+			})
+			.catch(function (err) {
+				if (checkboxEl) checkboxEl.checked = !enabled;
+				showToast((err && err.message) || __('saveErr'), false);
+			});
 	}
 
 	function getTeamOverviewRows(weekReadonly, showAll) {
@@ -1479,7 +1535,17 @@
 
 			html += '</div>';
 			d.venues.forEach(function (v) {
-				html += '<div class="vtc-tppl-lane-label">' + esc(v.label) + '</div>';
+				html += '<div class="vtc-tppl-lane-label">';
+				html += '<span class="vtc-tppl-lane-label-text">' + esc(v.label) + '</span>';
+				if (inhuur && !weekScope && !publishedView) {
+					var alwaysOn = isAlwaysShow(v.id, dow);
+					html += '<label class="vtc-tppl-always-show" title="' + esc(__('alwaysShowTitle')) + '">';
+					html += '<input type="checkbox" class="vtc-tppl-always-show-cb" data-venue-id="' + v.id + '" data-dow="' + dow + '"' + (alwaysOn ? ' checked' : '') + ' />';
+					html += '<span>' + esc(__('alwaysShow')) + '</span></label>';
+				} else if (isAlwaysShow(v.id, dow)) {
+					html += '<span class="vtc-tppl-always-show-badge" title="' + esc(__('alwaysShowTitle')) + '">' + esc(__('alwaysShowShort')) + '</span>';
+				}
+				html += '</div>';
 				html += '<div class="vtc-tppl-lane-body" data-venue-id="' + v.id + '" data-dow="' + dow + '">';
 				(d.unavailability || []).forEach(function (u) {
 					if (u.day_of_week !== dow || u.venue_id !== v.id) return;
@@ -1898,6 +1964,13 @@
 		}
 
 		if (!weekScope && inhuur && !publishedView) {
+			root.querySelectorAll('.vtc-tppl-always-show-cb').forEach(function (cb) {
+				cb.addEventListener('change', function () {
+					var vid = parseInt(cb.getAttribute('data-venue-id'), 10);
+					var dow = parseInt(cb.getAttribute('data-dow'), 10);
+					toggleAlwaysShow(vid, dow, !!cb.checked, cb);
+				});
+			});
 			root.querySelectorAll('.vtc-tppl-unavail').forEach(function (el) {
 				el.addEventListener('pointerdown', onUnavailPointerDown);
 				el.addEventListener('dblclick', onUnavailDblClick);

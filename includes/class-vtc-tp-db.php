@@ -304,6 +304,7 @@ class VTC_TP_DB {
 			foreach ( $venue_ids as $vid2 ) {
 				$vid2 = (int) $vid2;
 				$wpdb->delete( "{$p}vtc_tp_venue_unavail", array( 'venue_id' => $vid2 ), array( '%d' ) );
+				$wpdb->delete( "{$p}vtc_tp_venue_always_show", array( 'venue_id' => $vid2 ), array( '%d' ) );
 				$wpdb->delete( "{$p}vtc_tp_venue", array( 'id' => $vid2 ), array( '%d' ) );
 			}
 			$wpdb->delete( "{$p}vtc_tp_location", array( 'id' => $lid ), array( '%d' ) );
@@ -696,6 +697,86 @@ class VTC_TP_DB {
 		global $wpdb;
 		$p = $wpdb->prefix;
 		return $wpdb->delete( "{$p}vtc_tp_venue_unavail", array( 'id' => (int) $id ), array( '%d' ) );
+	}
+
+	/**
+	 * Altijd-tonen per veld/dag voor een blauwdruk (team-dagindex 0=ma … 6=zo).
+	 *
+	 * @return array<int, array{venue_id:int,day_of_week:int,label:string}>
+	 */
+	public function get_always_show_for_blueprint( $blueprint_id ) {
+		global $wpdb;
+		$p   = $wpdb->prefix;
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT a.venue_id, a.day_of_week, v.name AS venue_name, l.name AS location_name
+				FROM {$p}vtc_tp_venue_always_show a
+				INNER JOIN {$p}vtc_tp_venue v ON v.id = a.venue_id
+				INNER JOIN {$p}vtc_tp_location l ON l.id = v.location_id
+				WHERE l.blueprint_id = %d
+				ORDER BY a.day_of_week ASC, l.name ASC, v.sort_order ASC, v.name ASC, v.id ASC",
+				(int) $blueprint_id
+			)
+		);
+		$out = array();
+		if ( ! is_array( $rows ) ) {
+			return $out;
+		}
+		foreach ( $rows as $r ) {
+			$loc = isset( $r->location_name ) ? (string) $r->location_name : '';
+			$vn  = isset( $r->venue_name ) ? (string) $r->venue_name : '';
+			$lab = ( $loc && $vn ) ? ( $loc . ' — ' . $vn ) : ( $loc ? $loc : $vn );
+			$out[] = array(
+				'venue_id'     => (int) $r->venue_id,
+				'day_of_week'  => (int) $r->day_of_week,
+				'label'        => $lab,
+			);
+		}
+		return $out;
+	}
+
+	/**
+	 * @param int $venue_id
+	 * @param int $day_of_week 0–6
+	 * @return bool
+	 */
+	public function set_venue_always_show( $venue_id, $day_of_week, $enabled ) {
+		global $wpdb;
+		$p   = $wpdb->prefix;
+		$vid = (int) $venue_id;
+		$dow = (int) $day_of_week;
+		if ( $vid < 1 || $dow < 0 || $dow > 6 ) {
+			return false;
+		}
+		if ( $enabled ) {
+			$exists = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT id FROM {$p}vtc_tp_venue_always_show WHERE venue_id = %d AND day_of_week = %d LIMIT 1",
+					$vid,
+					$dow
+				)
+			);
+			if ( $exists > 0 ) {
+				return true;
+			}
+			return false !== $wpdb->insert(
+				"{$p}vtc_tp_venue_always_show",
+				array(
+					'venue_id'    => $vid,
+					'day_of_week' => $dow,
+				),
+				array( '%d', '%d' )
+			);
+		}
+		$wpdb->delete(
+			"{$p}vtc_tp_venue_always_show",
+			array(
+				'venue_id'    => $vid,
+				'day_of_week' => $dow,
+			),
+			array( '%d', '%d' )
+		);
+		return true;
 	}
 
 	/**

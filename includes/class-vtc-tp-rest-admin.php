@@ -220,6 +220,15 @@ class VTC_TP_Rest_Admin {
 				'permission_callback' => array( $this, 'can_manage' ),
 			)
 		);
+		register_rest_route(
+			'vtc-tp/v1',
+			'/admin/venue-always-show',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'set_venue_always_show' ),
+				'permission_callback' => array( $this, 'can_manage' ),
+			)
+		);
 	}
 
 	public function can_manage() {
@@ -481,6 +490,7 @@ class VTC_TP_Rest_Admin {
 				'venues'                  => $venues_out,
 				'slots'                   => $out_slots,
 				'unavailability'          => $out_un,
+				'always_show'             => $this->db->get_always_show_for_blueprint( $bp ),
 				'draft_differs'           => $this->db->draft_differs_from_published( $bp ),
 				'viewing_published'       => $viewing_published,
 			)
@@ -603,6 +613,7 @@ class VTC_TP_Rest_Admin {
 				'baseline_slots'            => $baseline_slots,
 				'matches'                   => $matches,
 				'unavailability'            => $out_un,
+				'always_show'               => $this->db->get_always_show_for_blueprint( $bp ),
 				'exception_weeks'           => $ew_list,
 				'draft_differs'             => $this->db->draft_differs_from_published( $bp ),
 				'rotation_anchor_iso_week'  => ( $bweek && ! empty( $bweek->rotation_anchor_iso_week ) ) ? (string) $bweek->rotation_anchor_iso_week : '',
@@ -1270,6 +1281,42 @@ class VTC_TP_Rest_Admin {
 		}
 		$this->db->delete_deviation_week( $id );
 		return rest_ensure_response( array( 'deleted' => true, 'id' => $id ) );
+	}
+
+	/**
+	 * Zet “altijd tonen op voorkant” per veld/dag (onmiddellijk, niet concept).
+	 */
+	public function set_venue_always_show( WP_REST_Request $req ) {
+		$params = $req->get_json_params();
+		if ( ! is_array( $params ) ) {
+			$params = array();
+		}
+		$bp = $this->resolve_blueprint_id( $req );
+		if ( ! $bp ) {
+			return new WP_Error( 'no_blueprint', __( 'Geen blauwdruk gevonden.', 'vtc-training-planner' ), array( 'status' => 400 ) );
+		}
+		$vid = (int) ( $params['venue_id'] ?? 0 );
+		$dow = (int) ( $params['day_of_week'] ?? -1 );
+		$on  = ! empty( $params['enabled'] );
+		if ( $vid < 1 || $dow < 0 || $dow > 6 ) {
+			return new WP_Error( 'bad_params', __( 'Ongeldig veld of dag.', 'vtc-training-planner' ), array( 'status' => 400 ) );
+		}
+		if ( ! isset( $this->valid_venue_ids( $bp )[ $vid ] ) ) {
+			return new WP_Error( 'bad_venue', __( 'Veld hoort niet bij deze blauwdruk.', 'vtc-training-planner' ), array( 'status' => 400 ) );
+		}
+		$ok = $this->db->set_venue_always_show( $vid, $dow, $on );
+		if ( ! $ok ) {
+			return new WP_Error( 'save_failed', __( 'Opslaan mislukt.', 'vtc-training-planner' ), array( 'status' => 500 ) );
+		}
+		return rest_ensure_response(
+			array(
+				'ok'          => true,
+				'venue_id'    => $vid,
+				'day_of_week' => $dow,
+				'enabled'     => $on,
+				'always_show' => $this->db->get_always_show_for_blueprint( $bp ),
+			)
+		);
 	}
 
 	/**

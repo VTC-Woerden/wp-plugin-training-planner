@@ -170,6 +170,7 @@ class VTC_TP_Public {
 				'uses_deviation_blueprint' => ! empty( $data['uses_deviation_blueprint'] ),
 				'effective_blueprint_id'   => isset( $data['effective_blueprint_id'] ) ? (int) $data['effective_blueprint_id'] : null,
 				'events'                   => $data['events'],
+				'always_show_lanes'        => isset( $data['always_show_lanes'] ) ? $data['always_show_lanes'] : array(),
 			)
 		);
 	}
@@ -217,13 +218,17 @@ class VTC_TP_Public {
 			echo '</header>';
 		}
 
-		if ( empty( $data['events'] ) ) {
+		$events       = isset( $data['events'] ) && is_array( $data['events'] ) ? $data['events'] : array();
+		$always_show  = isset( $data['always_show_lanes'] ) && is_array( $data['always_show_lanes'] ) ? $data['always_show_lanes'] : array();
+		$has_force    = ! empty( $always_show );
+
+		if ( empty( $events ) && ! $has_force ) {
 			echo '<p class="vtc-tp-week-empty">' . esc_html__( 'Geen trainingen of wedstrijden in deze week.', 'vtc-training-planner' ) . '</p>';
 			echo '</div>';
 			return ob_get_clean();
 		}
 
-		$by_date = self::week_events_grouped_by_date( $data['events'], $tz );
+		$by_date = self::week_events_grouped_by_date( $events, $tz );
 		$monday  = self::monday_of_iso_week_string( $data['iso_week'], $tz );
 		if ( ! $monday ) {
 			echo '<p class="vtc-tp-week-empty">' . esc_html__( 'Ongeldige week.', 'vtc-training-planner' ) . '</p></div>';
@@ -245,14 +250,18 @@ class VTC_TP_Public {
 			$ymd    = $day_dt->format( 'Y-m-d' );
 			$day_ts = $day_dt->getTimestamp();
 			$evs    = isset( $by_date[ $ymd ] ) ? $by_date[ $ymd ] : array();
+			// Team-dagindex (ma=0…zo=6): publieke layout start op zondag vóór ISO-maandag.
+			$team_dow = $public_week_layout ? ( 0 === $i ? 6 : $i - 1 ) : $i;
+			$force_labels = self::always_show_labels_for_dow( $always_show, $team_dow );
+			$has_day_force = ! empty( $force_labels );
 
-			// Publiek: kalender-zondag (slot 0) en -zaterdag (slot 6) verbergen bij geen items.
+			// Publiek: kalender-zondag (slot 0) en -zaterdag (slot 6) verbergen bij geen items (tenzij force-show).
 			// Admin (ISO): zaterdag (5) en zondag (6) verbergen bij geen items.
 			if ( $public_week_layout ) {
-				if ( empty( $evs ) && ( 0 === $i || 6 === $i ) ) {
+				if ( empty( $evs ) && ! $has_day_force && ( 0 === $i || 6 === $i ) ) {
 					continue;
 				}
-			} elseif ( empty( $evs ) && ( 5 === $i || 6 === $i ) ) {
+			} elseif ( empty( $evs ) && ! $has_day_force && ( 5 === $i || 6 === $i ) ) {
 				continue;
 			}
 
@@ -264,19 +273,24 @@ class VTC_TP_Public {
 			echo '</div>';
 			echo '</div>';
 
-			if ( empty( $evs ) ) {
+			if ( empty( $evs ) && ! $has_day_force ) {
 				echo '<p class="vtc-tp-day-empty">' . esc_html__( 'Geen trainingen of wedstrijden.', 'vtc-training-planner' ) . '</p>';
 				echo '</section>';
 				continue;
 			}
 
-			$win       = self::day_minute_window( $evs, $tz, $ymd );
+			if ( ! empty( $evs ) ) {
+				$win = self::day_minute_window( $evs, $tz, $ymd );
+			} else {
+				// Lege force-show baan: standaardavondvenster zodat vrije ruimte zichtbaar is.
+				$win = array( 't0' => 16 * 60, 't1' => 22 * 60 );
+			}
 			$t0        = $win['t0'];
 			$t1        = $win['t1'];
 			$span      = max( 1, $t1 - $t0 );
 			$hours_css = $span / 60.0;
 
-			$lanes = self::lanes_for_day_events( $evs );
+			$lanes = self::lanes_for_day_events( $evs, $force_labels );
 			echo '<div class="vtc-tp-day-grid"><div class="vtc-tp-day-grid-inner" style="--vtc-tp-hours:' . esc_attr( (string) round( $hours_css, 4 ) ) . ';">';
 			echo '<div class="vtc-tp-corner" aria-hidden="true"></div>';
 			echo '<div class="vtc-tp-time-ruler" aria-hidden="true">';
@@ -507,10 +521,40 @@ class VTC_TP_Public {
 	 * @param array<int, array<string, mixed>> $events
 	 * @return array<int, string>
 	 */
-	private static function lanes_for_day_events( array $events ) {
+	/**
+	 * @param array<int, array<string, mixed>> $always_show
+	 * @param int                              $team_dow
+	 * @return array<int, string>
+	 */
+	private static function always_show_labels_for_dow( array $always_show, $team_dow ) {
+		$out = array();
+		foreach ( $always_show as $row ) {
+			if ( (int) ( $row['day_of_week'] ?? -1 ) !== (int) $team_dow ) {
+				continue;
+			}
+			$lab = isset( $row['label'] ) ? trim( (string) $row['label'] ) : '';
+			if ( '' !== $lab ) {
+				$out[] = $lab;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * @param array<int, array<string, mixed>> $events
+	 * @param array<int, string>               $extra_labels
+	 * @return array<int, string>
+	 */
+	private static function lanes_for_day_events( array $events, array $extra_labels = array() ) {
 		$labels = array();
 		foreach ( $events as $ev ) {
 			$labels[ self::event_lane_label( $ev ) ] = true;
+		}
+		foreach ( $extra_labels as $lab ) {
+			$lab = trim( (string) $lab );
+			if ( '' !== $lab ) {
+				$labels[ $lab ] = true;
+			}
 		}
 		$keys = array_keys( $labels );
 		usort( $keys, 'strnatcasecmp' );

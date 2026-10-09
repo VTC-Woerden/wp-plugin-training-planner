@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class VTC_TP_Activator {
 
-	const DB_VERSION = '7';
+	const DB_VERSION = '8';
 
 	/**
 	 * Run on plugin activation.
@@ -107,6 +107,14 @@ class VTC_TP_Activator {
 				start_time varchar(8) NOT NULL,
 				end_time varchar(8) NOT NULL,
 				PRIMARY KEY  (id),
+				KEY venue_id (venue_id)
+			) $charset_collate;",
+			"CREATE TABLE {$p}vtc_tp_venue_always_show (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				venue_id bigint(20) unsigned NOT NULL,
+				day_of_week tinyint(3) unsigned NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY venue_day (venue_id,day_of_week),
 				KEY venue_id (venue_id)
 			) $charset_collate;",
 			"CREATE TABLE {$p}vtc_tp_slot_draft (
@@ -313,6 +321,10 @@ class VTC_TP_Activator {
 			self::migrate_schema_v7( $p, $charset_collate );
 		}
 
+		if ( version_compare( (string) $current, '8', '<' ) ) {
+			self::migrate_schema_v8( $p, $charset_collate );
+		}
+
 		update_option( 'vtc_tp_db_version', self::DB_VERSION );
 	}
 
@@ -485,6 +497,25 @@ class VTC_TP_Activator {
 		if ( ! get_option( VTC_TP_Metrics::OPTION_TOKEN, '' ) ) {
 			VTC_TP_Metrics::regenerate_token();
 		}
+	}
+
+	/**
+	 * Altijd-tonen vlag per veld/dag (lege banen op de voorkant).
+	 *
+	 * @param string $charset_collate wpdb collate.
+	 */
+	private static function migrate_schema_v8( $p, $charset_collate ) {
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta(
+			"CREATE TABLE {$p}vtc_tp_venue_always_show (
+				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+				venue_id bigint(20) unsigned NOT NULL,
+				day_of_week tinyint(3) unsigned NOT NULL,
+				PRIMARY KEY  (id),
+				UNIQUE KEY venue_day (venue_id,day_of_week),
+				KEY venue_id (venue_id)
+			) $charset_collate;"
+		);
 	}
 
 	/**

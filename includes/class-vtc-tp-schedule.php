@@ -723,6 +723,7 @@ class VTC_TP_Schedule {
 			'used_exceptions'         => (bool) $ex,
 			'effective_blueprint_id'  => $bp_eff,
 			'uses_deviation_blueprint'=> $bp_eff !== $bp_base,
+			'always_show_lanes'       => $this->db->get_always_show_for_blueprint( $bp_eff ),
 		);
 	}
 

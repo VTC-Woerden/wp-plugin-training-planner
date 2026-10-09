@@ -97,7 +97,12 @@ class VTC_TP_Admin {
 						'teamNameJoin' => __( ' + ', 'vtc-training-planner' ),
 						'modeTeams'  => __( 'Teamrooster', 'vtc-training-planner' ),
 						'modeInhuur' => __( 'Zaal/veld (inhuur)', 'vtc-training-planner' ),
-						'inhuurHelp' => __( 'Sleep horizontaal op een baan om niet-beschikbare tijden te tekenen (zoals in de Team-app). Sleep verticaal over meerdere velden om dezelfde periode op alle geraakte banen te zetten. Korte klik = 15 min. Blokken: horizontaal slepen = verplaatsen, linker/rechterrand = begin/einde, dubbelklik of Delete = verwijderen. Druk op “Concept opslaan” om naar de server te schrijven.', 'vtc-training-planner' ),
+						'inhuurHelp' => __( 'Sleep horizontaal op een baan om niet-beschikbare tijden te tekenen (zoals in de Team-app). Sleep verticaal over meerdere velden om dezelfde periode op alle geraakte banen te zetten. Korte klik = 15 min. Blokken: horizontaal slepen = verplaatsen, linker/rechterrand = begin/einde, dubbelklik of Delete = verwijderen. Vink “Altijd tonen” aan om een lege baan op de website te laten zien (vrije ruimte). Druk op “Concept opslaan” voor inhuurblokken.', 'vtc-training-planner' ),
+						'alwaysShow' => __( 'Altijd tonen', 'vtc-training-planner' ),
+						'alwaysShowShort' => __( 'Altijd', 'vtc-training-planner' ),
+						'alwaysShowTitle' => __( 'Toon dit veld op de website, ook zonder trainingen of inhuur die dag', 'vtc-training-planner' ),
+						'alwaysShowOn' => __( 'Veld wordt altijd getoond op de website.', 'vtc-training-planner' ),
+						'alwaysShowOff' => __( 'Veld alleen getoond bij bezetting.', 'vtc-training-planner' ),
 						'inhuurBanner' => __( 'Modus: zaal/veld — teamblokken zijn verborgen; je tekent alleen beschikbaarheid (inhuur / geen huur).', 'vtc-training-planner' ),
 						'unavailAdded' => __( 'Niet-beschikbaar toegevoegd.', 'vtc-training-planner' ),
 						'unavailMulti' => __( 'Niet-beschikbaar toegevoegd op meerdere velden.', 'vtc-training-planner' ),
@@ -565,6 +570,7 @@ class VTC_TP_Admin {
 				foreach ( $vids as $vid ) {
 					$vid = (int) $vid;
 					$wpdb->delete( "{$p}vtc_tp_venue_unavail", array( 'venue_id' => $vid ), array( '%d' ) );
+					$wpdb->delete( "{$p}vtc_tp_venue_always_show", array( 'venue_id' => $vid ), array( '%d' ) );
 					$wpdb->delete( "{$p}vtc_tp_slot_draft", array( 'venue_id' => $vid ), array( '%d' ) );
 					$wpdb->delete( "{$p}vtc_tp_slot_published", array( 'venue_id' => $vid ), array( '%d' ) );
 					$wpdb->delete( "{$p}vtc_tp_exception_slot", array( 'venue_id' => $vid ), array( '%d' ) );
@@ -594,6 +600,7 @@ class VTC_TP_Admin {
 			case 'delete_venue':
 				$vid = absint( $_POST['venue_id'] ?? 0 );
 				$wpdb->delete( "{$p}vtc_tp_venue_unavail", array( 'venue_id' => $vid ), array( '%d' ) );
+				$wpdb->delete( "{$p}vtc_tp_venue_always_show", array( 'venue_id' => $vid ), array( '%d' ) );
 				$wpdb->delete( "{$p}vtc_tp_slot_draft", array( 'venue_id' => $vid ), array( '%d' ) );
 				$wpdb->delete( "{$p}vtc_tp_slot_published", array( 'venue_id' => $vid ), array( '%d' ) );
 				$wpdb->delete( "{$p}vtc_tp_exception_slot", array( 'venue_id' => $vid ), array( '%d' ) );
