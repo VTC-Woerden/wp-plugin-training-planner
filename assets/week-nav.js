@@ -1,6 +1,6 @@
 /**
  * Weekwissel via REST (geen volledige pagina-herlaad); pijltoetsen + toolbar-knoppen.
- * Plus: wedstrijden-toggle (standaard uit, localStorage).
+ * Plus: wedstrijden-toggle (standaard uit, localStorage) — direct zichtbaar aan/uit.
  */
 (function () {
 	'use strict';
@@ -25,13 +25,31 @@
 		} catch (e2) { /* ignore */ }
 	}
 
+	/**
+	 * Zet wedstrijden direct zichtbaar/onzichtbaar (class + hidden), zonder page reload.
+	 */
 	function applyShowMatches(shell, on) {
 		if (!shell) return;
-		shell.classList.toggle('is-show-matches', !!on);
+		on = !!on;
+		shell.classList.toggle('is-show-matches', on);
+		shell.setAttribute('data-show-matches', on ? '1' : '0');
 		var cb = qs('.vtc-tp-show-matches-cb', shell);
-		if (cb) {
-			cb.checked = !!on;
+		if (cb && cb.checked !== on) {
+			cb.checked = on;
 		}
+		shell.querySelectorAll('.vtc-tp-block--match').forEach(function (el) {
+			if (on) {
+				el.removeAttribute('hidden');
+				el.style.removeProperty('display');
+			} else {
+				el.setAttribute('hidden', 'hidden');
+				el.style.display = 'none';
+			}
+		});
+	}
+
+	function syncShellFromPref(shell) {
+		applyShowMatches(shell, loadShowMatchesPref());
 	}
 
 	function weekFromUrl() {
@@ -111,6 +129,8 @@
 				if (usePushState) {
 					setUrlWeekParam(data.iso_week || iso);
 				}
+				// Nieuwe HTML: wedstrijden-zichtbaarheid opnieuw toepassen.
+				syncShellFromPref(shell);
 			})
 			.catch(function () {
 				inner.innerHTML =
@@ -123,31 +143,14 @@
 			});
 	}
 
-	function bindMatchesToggle(shell) {
-		if (!shell || shell.getAttribute('data-matches-toggle') !== '1') {
+	function bindShellNav(shell) {
+		if (!shell || shell.getAttribute('data-ajax-week') !== '1') {
 			return;
 		}
-		applyShowMatches(shell, loadShowMatchesPref());
-		var cb = qs('.vtc-tp-show-matches-cb', shell);
-		if (!cb || cb.getAttribute('data-bound') === '1') {
+		if (shell.getAttribute('data-nav-bound') === '1') {
 			return;
 		}
-		cb.setAttribute('data-bound', '1');
-		cb.addEventListener('change', function () {
-			var on = !!cb.checked;
-			saveShowMatchesPref(on);
-			applyShowMatches(shell, on);
-		});
-	}
-
-	function bindShell(shell) {
-		if (!shell) {
-			return;
-		}
-		bindMatchesToggle(shell);
-		if (shell.getAttribute('data-ajax-week') !== '1') {
-			return;
-		}
+		shell.setAttribute('data-nav-bound', '1');
 
 		shell.addEventListener('click', function (e) {
 			var btn = e.target.closest('.vtc-tp-week-nav-btn[data-nav-week]');
@@ -170,12 +173,32 @@
 	}
 
 	function initWeekNav() {
-		document.querySelectorAll('.vtc-tp-week-shell').forEach(bindShell);
+		document.querySelectorAll('.vtc-tp-week-shell').forEach(function (shell) {
+			if (shell.getAttribute('data-matches-toggle') === '1') {
+				syncShellFromPref(shell);
+			}
+			bindShellNav(shell);
+		});
 
 		if (window.vtcTpWeekNavKeyBound) {
 			return;
 		}
 		window.vtcTpWeekNavKeyBound = true;
+
+		// Event delegation: werkt altijd, ook als checkbox later opnieuw gerenderd wordt.
+		document.addEventListener('change', function (e) {
+			var t = e.target;
+			if (!t || !t.classList || !t.classList.contains('vtc-tp-show-matches-cb')) {
+				return;
+			}
+			var shell = t.closest('.vtc-tp-week-shell');
+			if (!shell) {
+				return;
+			}
+			var on = !!t.checked;
+			saveShowMatchesPref(on);
+			applyShowMatches(shell, on);
+		});
 
 		document.addEventListener('keydown', function (e) {
 			if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
@@ -217,4 +240,3 @@
 		initWeekNav();
 	}
 })();
-

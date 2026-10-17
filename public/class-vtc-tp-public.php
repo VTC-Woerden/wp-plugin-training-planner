@@ -331,9 +331,12 @@ class VTC_TP_Public {
 					if ( ! empty( $ev['conflict'] ) ) {
 						$cls .= ' vtc-tp-block--conflict';
 					}
+					$is_match = isset( $ev['type'] ) && 'match' === $ev['type'];
 					$bg  = self::event_block_color( $ev );
 					$tip = self::event_tooltip_text( $ev, $start, $end, $lane_label );
-					echo '<div class="' . esc_attr( $cls ) . '" style="left:' . esc_attr( (string) round( $left_pct, 4 ) ) . '%;width:' . esc_attr( (string) round( $width_pct, 4 ) ) . '%;background:' . esc_attr( $bg ) . '" tabindex="0" data-vtc-tip="' . esc_attr( $tip ) . '" aria-label="' . esc_attr( $tip ) . '">';
+					// Matches standaard hidden; week-nav.js toont ze bij “Wedstrijden tonen”.
+					$hidden_attr = ( $is_match && $public_week_layout ) ? ' hidden' : '';
+					echo '<div class="' . esc_attr( $cls ) . '"' . $hidden_attr . ' style="left:' . esc_attr( (string) round( $left_pct, 4 ) ) . '%;width:' . esc_attr( (string) round( $width_pct, 4 ) ) . '%;background:' . esc_attr( $bg ) . '" tabindex="0" data-vtc-tip="' . esc_attr( $tip ) . '" aria-label="' . esc_attr( $tip ) . '">';
 					echo '<span class="vtc-tp-block-title">' . esc_html( $ev['title'] ) . '</span>';
 					echo '<span class="vtc-tp-block-times"><span class="vtc-tp-block-start">' . esc_html( $start->format( 'H:i' ) ) . '</span><span class="vtc-tp-block-sep" aria-hidden="true">–</span><span class="vtc-tp-block-end">' . esc_html( $end->format( 'H:i' ) ) . '</span></span>';
 					echo '</div>';
