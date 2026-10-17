@@ -251,6 +251,17 @@ class VTC_TP_Public {
 			$team_dow = $public_week_layout ? ( 0 === $i ? 6 : $i - 1 ) : $i;
 			$force_labels = self::always_show_labels_for_dow( $always_show, $team_dow );
 			$has_day_force = ! empty( $force_labels );
+			$day_has_training = false;
+			$day_has_match    = false;
+			foreach ( $evs as $ev_scan ) {
+				if ( isset( $ev_scan['type'] ) && 'match' === $ev_scan['type'] ) {
+					$day_has_match = true;
+				} else {
+					$day_has_training = true;
+				}
+			}
+			// Alleen wedstrijden (geen training / force-show): dag meeschuiven met wedstrijden-toggle.
+			$day_matches_only = $public_week_layout && $day_has_match && ! $day_has_training && ! $has_day_force;
 
 			// Publiek: kalender-zondag (slot 0) en -zaterdag (slot 6) verbergen bij geen items (tenzij force-show).
 			// Admin (ISO): zaterdag (5) en zondag (6) verbergen bij geen items.
@@ -262,7 +273,12 @@ class VTC_TP_Public {
 				continue;
 			}
 
-			echo '<section class="vtc-tp-day" data-dow="' . (int) $i . '" data-date="' . esc_attr( $ymd ) . '">';
+			$day_hidden = $day_matches_only ? ' hidden' : '';
+			$day_attrs  = ' data-dow="' . (int) $i . '" data-date="' . esc_attr( $ymd ) . '"';
+			if ( $day_matches_only ) {
+				$day_attrs .= ' data-matches-only="1"';
+			}
+			echo '<section class="vtc-tp-day"' . $day_attrs . $day_hidden . '>';
 			echo '<div class="vtc-tp-day-head">';
 			echo '<div class="vtc-tp-day-head-main">';
 			echo '<span class="vtc-tp-day-name">' . esc_html( $day_names[ $i ] ?? '' ) . '</span> ';
@@ -305,9 +321,26 @@ class VTC_TP_Public {
 			echo '</div>';
 
 			foreach ( $lanes as $lane_label ) {
+				$lane_has_training = false;
+				$lane_has_match    = false;
+				foreach ( $evs as $ev_lane ) {
+					if ( self::event_lane_label( $ev_lane ) !== $lane_label ) {
+						continue;
+					}
+					if ( isset( $ev_lane['type'] ) && 'match' === $ev_lane['type'] ) {
+						$lane_has_match = true;
+					} else {
+						$lane_has_training = true;
+					}
+				}
+				$lane_force        = in_array( $lane_label, $force_labels, true );
+				$lane_matches_only = $public_week_layout && $lane_has_match && ! $lane_has_training && ! $lane_force;
+				$lane_mo_attr      = $lane_matches_only ? ' data-lane-matches-only="1"' : '';
+				$lane_hidden       = $lane_matches_only ? ' hidden' : '';
+
 				$lane_esc = esc_html( $lane_label );
-				echo '<div class="vtc-tp-lane-label">' . $lane_esc . '</div>';
-				echo '<div class="vtc-tp-lane-body">';
+				echo '<div class="vtc-tp-lane-label"' . $lane_mo_attr . $lane_hidden . '>' . $lane_esc . '</div>';
+				echo '<div class="vtc-tp-lane-body"' . $lane_mo_attr . $lane_hidden . '>';
 				foreach ( $evs as $ev ) {
 					if ( self::event_lane_label( $ev ) !== $lane_label ) {
 						continue;

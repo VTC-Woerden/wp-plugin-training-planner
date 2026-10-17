@@ -25,8 +25,19 @@
 		} catch (e2) { /* ignore */ }
 	}
 
+	function setElVisible(el, on) {
+		if (!el) return;
+		if (on) {
+			el.removeAttribute('hidden');
+			el.style.removeProperty('display');
+		} else {
+			el.setAttribute('hidden', 'hidden');
+			el.style.display = 'none';
+		}
+	}
+
 	/**
-	 * Zet wedstrijden direct zichtbaar/onzichtbaar (class + hidden), zonder page reload.
+	 * Zet wedstrijden (en dagen/banen die alleen wedstrijden hebben) direct aan/uit.
 	 */
 	function applyShowMatches(shell, on) {
 		if (!shell) return;
@@ -38,13 +49,15 @@
 			cb.checked = on;
 		}
 		shell.querySelectorAll('.vtc-tp-block--match').forEach(function (el) {
-			if (on) {
-				el.removeAttribute('hidden');
-				el.style.removeProperty('display');
-			} else {
-				el.setAttribute('hidden', 'hidden');
-				el.style.display = 'none';
-			}
+			setElVisible(el, on);
+		});
+		// Dagen zonder trainingen (alleen wedstrijden) mee verbergen/tonen.
+		shell.querySelectorAll('.vtc-tp-day[data-matches-only="1"]').forEach(function (el) {
+			setElVisible(el, on);
+		});
+		// Banen die alleen wedstrijden bevatten (binnen een trainingsdag).
+		shell.querySelectorAll('[data-lane-matches-only="1"]').forEach(function (el) {
+			setElVisible(el, on);
 		});
 	}
 

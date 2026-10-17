@@ -93,10 +93,16 @@
 	height: 16px;
 }
 
-/* Wedstrijden standaard verborgen tot bezoeker toggle aanzet (JS zet ook [hidden]/display) */
+/* Wedstrijden + matches-only dagen/banen standaard verborgen tot toggle aan */
 .vtc-tp-week-shell[data-matches-toggle="1"]:not(.is-show-matches) .vtc-tp-block--match,
 .vtc-tp-week-shell[data-matches-toggle="1"][data-show-matches="0"] .vtc-tp-block--match,
-.vtc-tp-block--match[hidden] {
+.vtc-tp-week-shell[data-matches-toggle="1"]:not(.is-show-matches) .vtc-tp-day[data-matches-only="1"],
+.vtc-tp-week-shell[data-matches-toggle="1"][data-show-matches="0"] .vtc-tp-day[data-matches-only="1"],
+.vtc-tp-week-shell[data-matches-toggle="1"]:not(.is-show-matches) [data-lane-matches-only="1"],
+.vtc-tp-week-shell[data-matches-toggle="1"][data-show-matches="0"] [data-lane-matches-only="1"],
+.vtc-tp-block--match[hidden],
+.vtc-tp-day[data-matches-only="1"][hidden],
+[data-lane-matches-only="1"][hidden] {
 	display: none !important;
 }
 
