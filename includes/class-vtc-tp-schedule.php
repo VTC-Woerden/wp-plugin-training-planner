@@ -98,6 +98,35 @@ class VTC_TP_Schedule {
 	}
 
 	/**
+	 * Kalenderdatums voor ISO-week (ma=0…zo=6), zelfde opmaak als voorkant (`j F Y`).
+	 *
+	 * @param string $iso_week Genormaliseerde ISO-week.
+	 * @return array<int, array{ymd:string,label:string}>
+	 */
+	public static function team_week_day_dates( $iso_week ) {
+		$norm = self::normalize_iso_week( $iso_week );
+		$out  = array();
+		if ( ! $norm || ! preg_match( '/^(\d{4})-W(\d{2})$/', $norm, $m ) ) {
+			return $out;
+		}
+		$tz = wp_timezone();
+		try {
+			$monday = ( new DateTimeImmutable( 'now', $tz ) )->setISODate( (int) $m[1], (int) $m[2], 1 )->setTime( 0, 0, 0 );
+		} catch ( Exception $e ) {
+			return $out;
+		}
+		for ( $dow = 0; $dow <= 6; $dow++ ) {
+			$day = $monday->modify( '+' . $dow . ' days' );
+			$ts  = $day->getTimestamp();
+			$out[ $dow ] = array(
+				'ymd'   => $day->format( 'Y-m-d' ),
+				'label' => wp_date( 'j F Y', $ts ),
+			);
+		}
+		return $out;
+	}
+
+	/**
 	 * Dagnamen voor de publieke weekkolommen: zondag vóór ISO-maandag … zaterdag (index 0–6).
 	 *
 	 * @return array<int, string>

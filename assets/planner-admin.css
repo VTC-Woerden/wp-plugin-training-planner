@@ -475,13 +475,21 @@
 
 .vtc-tppl-day-head {
 	padding: 10px 14px;
-	font-weight: 700;
 	font-size: 14px;
 	text-align: left;
 	letter-spacing: 0.01em;
 	color: #1d2327;
 	background: linear-gradient(180deg, #e8eef5 0%, #f6f8fb 100%);
 	border-bottom: 1px solid var(--vtc-tppl-border);
+}
+
+.vtc-tppl-day-name {
+	font-weight: 700;
+}
+
+.vtc-tppl-day-date {
+	font-weight: 600;
+	color: #2c3338;
 }
 
 .vtc-tppl-day-grid {

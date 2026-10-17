@@ -102,9 +102,10 @@
 	function loadScheduleView() {
 		try {
 			var v = sessionStorage.getItem(SCHEDULE_VIEW_KEY);
-			return v === 'week' ? 'week' : 'blueprint';
+			if (v === 'blueprint') return 'blueprint';
+			return 'week';
 		} catch (e) {
-			return 'blueprint';
+			return 'week';
 		}
 	}
 
@@ -1346,9 +1347,9 @@
 		html += '<div class="vtc-tppl-toolbar">';
 		html += '<div class="vtc-tppl-toolbar-row vtc-tppl-toolbar-row--main">';
 		html += '<div class="vtc-tppl-toolbar-left">';
-		html += '<div class="vtc-tppl-toggle vtc-tppl-schedule-view" role="tablist" aria-label="' + esc(__('viewBlueprint')) + ' / ' + esc(__('viewWeek')) + '">';
-		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-view-btn' + (!weekSel ? ' is-active' : '') + '" data-schedule-view="blueprint" role="tab" aria-selected="' + (!weekSel ? 'true' : 'false') + '">' + esc(__('viewBlueprint')) + '</button>';
+		html += '<div class="vtc-tppl-toggle vtc-tppl-schedule-view" role="tablist" aria-label="' + esc(__('viewWeek')) + ' / ' + esc(__('viewBlueprint')) + '">';
 		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-view-btn' + (weekSel ? ' is-active' : '') + '" data-schedule-view="week" role="tab" aria-selected="' + (weekSel ? 'true' : 'false') + '">' + esc(__('viewWeek')) + '</button>';
+		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-view-btn' + (!weekSel ? ' is-active' : '') + '" data-schedule-view="blueprint" role="tab" aria-selected="' + (!weekSel ? 'true' : 'false') + '">' + esc(__('viewBlueprint')) + '</button>';
 		html += '</div>';
 		html += '</div>';
 		html += '<div class="vtc-tppl-actions">';
@@ -1392,9 +1393,9 @@
 		html += '<div class="vtc-tppl-toolbar">';
 		html += '<div class="vtc-tppl-toolbar-row vtc-tppl-toolbar-row--main">';
 		html += '<div class="vtc-tppl-toolbar-left">';
-		html += '<div class="vtc-tppl-toggle vtc-tppl-schedule-view" role="tablist" aria-label="' + esc(__('viewBlueprint')) + ' / ' + esc(__('viewWeek')) + '">';
-		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-view-btn' + (!weekScope ? ' is-active' : '') + '" data-schedule-view="blueprint" role="tab" aria-selected="' + (!weekScope ? 'true' : 'false') + '">' + esc(__('viewBlueprint')) + '</button>';
+		html += '<div class="vtc-tppl-toggle vtc-tppl-schedule-view" role="tablist" aria-label="' + esc(__('viewWeek')) + ' / ' + esc(__('viewBlueprint')) + '">';
 		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-view-btn' + (weekScope ? ' is-active' : '') + '" data-schedule-view="week" role="tab" aria-selected="' + (weekScope ? 'true' : 'false') + '">' + esc(__('viewWeek')) + '</button>';
+		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-view-btn' + (!weekScope ? ' is-active' : '') + '" data-schedule-view="blueprint" role="tab" aria-selected="' + (!weekScope ? 'true' : 'false') + '">' + esc(__('viewBlueprint')) + '</button>';
 		html += '</div>';
 		html += '<div class="vtc-tppl-toggle vtc-tppl-mode" role="tablist" aria-label="' + esc(__('modeTeams')) + ' / ' + esc(__('modeInhuur')) + '">';
 		html += '<button type="button" class="vtc-tppl-toggle-btn vtc-tppl-mode-btn' + (!inhuur ? ' is-active' : '') + '" data-mode="teams" role="tab" aria-selected="' + (!inhuur ? 'true' : 'false') + '">' + esc(__('modeTeams')) + '</button>';
@@ -1551,7 +1552,13 @@
 		html += '<div class="vtc-tppl-main"><div class="vtc-tppl-days">';
 		for (var dow = 0; dow <= 6; dow++) {
 			html += '<div class="vtc-tppl-day" data-dow="' + dow + '">';
-			html += '<div class="vtc-tppl-day-head">' + esc((d.day_names && d.day_names[dow]) || ('Dag ' + dow)) + '</div>';
+			html += '<div class="vtc-tppl-day-head">';
+			html += '<span class="vtc-tppl-day-name">' + esc((d.day_names && d.day_names[dow]) || ('Dag ' + dow)) + '</span>';
+			if (weekScope && d.day_dates && d.day_dates[dow]) {
+				var dd = d.day_dates[dow];
+				html += ' <time class="vtc-tppl-day-date" datetime="' + esc(dd.ymd || '') + '">' + esc(dd.label || '') + '</time>';
+			}
+			html += '</div>';
 			html += '<div class="vtc-tppl-day-grid"><div class="vtc-tppl-day-grid-inner">';
 			html += '<div class="vtc-tppl-corner" aria-hidden="true"></div>';
 			html += '<div class="vtc-tppl-time-ruler" aria-hidden="true">';

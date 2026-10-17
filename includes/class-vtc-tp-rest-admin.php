@@ -622,6 +622,7 @@ class VTC_TP_Rest_Admin {
 				'uses_deviation_blueprint'  => $bp !== $base_bp,
 				'deviation_week_row_id'     => $dev_row ? (int) $dev_row->id : null,
 				'day_names'                 => VTC_TP_Schedule::team_day_names(),
+				'day_dates'                 => VTC_TP_Schedule::team_week_day_dates( $norm ),
 				'teams'                     => $teams_out,
 				'venues'                    => $venues_out,
 				'slots'                     => $out_slots,
