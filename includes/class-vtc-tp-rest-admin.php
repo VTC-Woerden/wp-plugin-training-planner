@@ -229,6 +229,15 @@ class VTC_TP_Rest_Admin {
 				'permission_callback' => array( $this, 'can_manage' ),
 			)
 		);
+		register_rest_route(
+			'vtc-tp/v1',
+			'/admin/match-time-override',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'set_match_time_override' ),
+				'permission_callback' => array( $this, 'can_manage' ),
+			)
+		);
 	}
 
 	public function can_manage() {
@@ -320,8 +329,13 @@ class VTC_TP_Rest_Admin {
 			// Team-app: maandag = 0 … zondag = 6 (ISO N = 1…7).
 			$dow = (int) $start->format( 'N' ) - 1;
 			++$n;
+			$mkey = isset( $ev['match_key'] ) ? (string) $ev['match_key'] : '';
+			if ( '' === $mkey ) {
+				$mkey = 'm-' . (int) $ev['start_ts'] . '-' . $vid . '-' . $n;
+			}
 			$out[] = array(
 				'id'             => 'm-' . (int) $ev['start_ts'] . '-' . $vid . '-' . $n,
+				'match_key'      => $mkey,
 				'venue_id'       => $vid,
 				'day_of_week'    => $dow,
 				'start_time'     => $start->format( 'H:i' ),
@@ -330,6 +344,7 @@ class VTC_TP_Rest_Admin {
 				'scheidsrechter' => isset( $ev['scheidsrechter'] ) ? (string) $ev['scheidsrechter'] : '',
 				'teller'         => isset( $ev['teller'] ) ? (string) $ev['teller'] : '',
 				'conflict'       => ! empty( $ev['conflict'] ),
+				'time_overridden'=> ! empty( $ev['time_overridden'] ),
 			);
 		}
 
@@ -1281,6 +1296,37 @@ class VTC_TP_Rest_Admin {
 		}
 		$this->db->delete_deviation_week( $id );
 		return rest_ensure_response( array( 'deleted' => true, 'id' => $id ) );
+	}
+
+	/**
+	 * Handmatige start/eindtijd voor een Nevobo-wedstrijd (planner + voorkant).
+	 */
+	public function set_match_time_override( WP_REST_Request $req ) {
+		$params = $req->get_json_params();
+		if ( ! is_array( $params ) ) {
+			$params = array();
+		}
+		$key = isset( $params['match_key'] ) ? sanitize_text_field( (string) $params['match_key'] ) : '';
+		$st  = $this->normalize_time( $params['start_time'] ?? '' );
+		$en  = $this->normalize_time( $params['end_time'] ?? '' );
+		if ( '' === $key || null === $st || null === $en ) {
+			return new WP_Error( 'bad_params', __( 'Ongeldige wedstrijd of tijd.', 'vtc-training-planner' ), array( 'status' => 400 ) );
+		}
+		if ( $this->minutes( $en ) <= $this->minutes( $st ) ) {
+			return new WP_Error( 'bad_range', __( 'Eindtijd moet na starttijd liggen.', 'vtc-training-planner' ), array( 'status' => 400 ) );
+		}
+		$ok = $this->db->set_match_time_override( $key, $st, $en );
+		if ( ! $ok ) {
+			return new WP_Error( 'save_failed', __( 'Opslaan mislukt.', 'vtc-training-planner' ), array( 'status' => 500 ) );
+		}
+		return rest_ensure_response(
+			array(
+				'ok'         => true,
+				'match_key'  => $key,
+				'start_time' => $st,
+				'end_time'   => $en,
+			)
+		);
 	}
 
 	/**

@@ -783,13 +783,17 @@
 	filter: saturate(0.92);
 }
 
-/* Nevobo-thuiswedstrijden in weekweergave (alleen-lezen) */
+/* Nevobo-thuiswedstrijden in weekweergave (duur via randen aanpasbaar) */
 .vtc-tppl-block--match {
 	background: #2271b1 !important;
 	cursor: default;
 	pointer-events: auto;
 	z-index: 4;
 	opacity: 0.95;
+}
+
+.vtc-tppl-block--match .vtc-tppl-block-resize {
+	z-index: 5;
 }
 
 .vtc-tppl-block--match-conflict {

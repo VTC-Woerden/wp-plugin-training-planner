@@ -456,7 +456,8 @@ class VTC_TP_Schedule {
 				'field_label'    => $field,
 				'hall_key'       => $vid ? ( 'v:' . $vid ) : ( $vname ? strtolower( $vname ) : 'm:' . md5( $title ) ),
 			);
-			$tasks = VTC_TP_Zaaltaken::resolve_for_match( $m, $zaal );
+			$ev['match_key'] = $this->match_event_key( $m );
+			$tasks           = VTC_TP_Zaaltaken::resolve_for_match( $m, $zaal );
 			if ( $tasks ) {
 				if ( '' !== $tasks['scheidsrechter'] ) {
 					$ev['scheidsrechter'] = $tasks['scheidsrechter'];
@@ -473,7 +474,70 @@ class VTC_TP_Schedule {
 				return $a['start_ts'] <=> $b['start_ts'];
 			}
 		);
-		return $this->trim_match_ends_before_next_on_field( $events );
+		$events = $this->trim_match_ends_before_next_on_field( $events );
+		return $this->apply_match_time_overrides( $events );
+	}
+
+	/**
+	 * Stabiele sleutel voor handmatige tijd-overrides (Nevobo-code of fallback).
+	 *
+	 * @param array<string, mixed> $m
+	 * @return string
+	 */
+	public function match_event_key( array $m ) {
+		if ( ! empty( $m['match_code'] ) ) {
+			$code = VTC_TP_Nevobo::normalize_match_code( (string) $m['match_code'] );
+			if ( '' !== $code ) {
+				return $code;
+			}
+		}
+		$ts   = isset( $m['datetime_ts'] ) ? (int) $m['datetime_ts'] : 0;
+		$blob = strtolower(
+			trim(
+				( isset( $m['home_team'] ) ? (string) $m['home_team'] : '' ) . '|' .
+				( isset( $m['away_team'] ) ? (string) $m['away_team'] : '' ) . '|' .
+				( isset( $m['title'] ) ? (string) $m['title'] : '' ) . '|' .
+				( isset( $m['venue_name'] ) ? (string) $m['venue_name'] : '' )
+			)
+		);
+		return 't:' . $ts . ':' . substr( md5( $blob ), 0, 12 );
+	}
+
+	/**
+	 * Handmatige start/eindtijd uit wp-admin overschrijft auto-duur/trim.
+	 *
+	 * @param array<int, array<string, mixed>> $events
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function apply_match_time_overrides( array $events ) {
+		$map = $this->db->get_match_time_overrides_map();
+		if ( empty( $map ) ) {
+			return $events;
+		}
+		$tz = wp_timezone();
+		foreach ( $events as $i => $ev ) {
+			$key = isset( $ev['match_key'] ) ? (string) $ev['match_key'] : '';
+			if ( '' === $key || ! isset( $map[ $key ] ) ) {
+				continue;
+			}
+			$row = $map[ $key ];
+			$st  = isset( $row->start_time ) ? (string) $row->start_time : '';
+			$en  = isset( $row->end_time ) ? (string) $row->end_time : '';
+			if ( ! preg_match( '/^\d{2}:\d{2}$/', $st ) || ! preg_match( '/^\d{2}:\d{2}$/', $en ) ) {
+				continue;
+			}
+			$base = ( new DateTimeImmutable( '@' . (int) $ev['start_ts'] ) )->setTimezone( $tz );
+			$day  = $base->format( 'Y-m-d' );
+			$start = DateTimeImmutable::createFromFormat( 'Y-m-d H:i', $day . ' ' . $st, $tz );
+			$end   = DateTimeImmutable::createFromFormat( 'Y-m-d H:i', $day . ' ' . $en, $tz );
+			if ( ! $start || ! $end || $end->getTimestamp() <= $start->getTimestamp() ) {
+				continue;
+			}
+			$events[ $i ]['start_ts']        = $start->getTimestamp();
+			$events[ $i ]['end_ts']          = $end->getTimestamp();
+			$events[ $i ]['time_overridden'] = true;
+		}
+		return $events;
 	}
 
 	/**

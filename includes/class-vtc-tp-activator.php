@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class VTC_TP_Activator {
 
-	const DB_VERSION = '8';
+	const DB_VERSION = '9';
 
 	/**
 	 * Run on plugin activation.
@@ -116,6 +116,13 @@ class VTC_TP_Activator {
 				PRIMARY KEY  (id),
 				UNIQUE KEY venue_day (venue_id,day_of_week),
 				KEY venue_id (venue_id)
+			) $charset_collate;",
+			"CREATE TABLE {$p}vtc_tp_match_time_override (
+				match_key varchar(191) NOT NULL,
+				start_time varchar(8) NOT NULL,
+				end_time varchar(8) NOT NULL,
+				updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY  (match_key)
 			) $charset_collate;",
 			"CREATE TABLE {$p}vtc_tp_slot_draft (
 				id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -325,6 +332,10 @@ class VTC_TP_Activator {
 			self::migrate_schema_v8( $p, $charset_collate );
 		}
 
+		if ( version_compare( (string) $current, '9', '<' ) ) {
+			self::migrate_schema_v9( $p, $charset_collate );
+		}
+
 		update_option( 'vtc_tp_db_version', self::DB_VERSION );
 	}
 
@@ -514,6 +525,24 @@ class VTC_TP_Activator {
 				PRIMARY KEY  (id),
 				UNIQUE KEY venue_day (venue_id,day_of_week),
 				KEY venue_id (venue_id)
+			) $charset_collate;"
+		);
+	}
+
+	/**
+	 * Handmatige start/eindtijd voor Nevobo-wedstrijden (planner + voorkant).
+	 *
+	 * @param string $charset_collate wpdb collate.
+	 */
+	private static function migrate_schema_v9( $p, $charset_collate ) {
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta(
+			"CREATE TABLE {$p}vtc_tp_match_time_override (
+				match_key varchar(191) NOT NULL,
+				start_time varchar(8) NOT NULL,
+				end_time varchar(8) NOT NULL,
+				updated_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY  (match_key)
 			) $charset_collate;"
 		);
 	}

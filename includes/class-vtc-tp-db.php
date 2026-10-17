@@ -780,6 +780,73 @@ class VTC_TP_DB {
 	}
 
 	/**
+	 * @return array<string, object> match_key => row
+	 */
+	public function get_match_time_overrides_map() {
+		global $wpdb;
+		$p    = $wpdb->prefix;
+		$rows = $wpdb->get_results( "SELECT match_key, start_time, end_time FROM {$p}vtc_tp_match_time_override" );
+		$out  = array();
+		if ( ! is_array( $rows ) ) {
+			return $out;
+		}
+		foreach ( $rows as $r ) {
+			$k = isset( $r->match_key ) ? (string) $r->match_key : '';
+			if ( '' !== $k ) {
+				$out[ $k ] = $r;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * @param string $match_key
+	 * @param string $start_time HH:MM
+	 * @param string $end_time   HH:MM
+	 * @return bool
+	 */
+	public function set_match_time_override( $match_key, $start_time, $end_time ) {
+		global $wpdb;
+		$p   = $wpdb->prefix;
+		$key = sanitize_text_field( (string) $match_key );
+		$st  = sanitize_text_field( (string) $start_time );
+		$en  = sanitize_text_field( (string) $end_time );
+		if ( '' === $key || ! preg_match( '/^\d{2}:\d{2}$/', $st ) || ! preg_match( '/^\d{2}:\d{2}$/', $en ) ) {
+			return false;
+		}
+		$exists = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$p}vtc_tp_match_time_override WHERE match_key = %s",
+				$key
+			)
+		);
+		$data = array(
+			'match_key'  => $key,
+			'start_time' => $st,
+			'end_time'   => $en,
+			'updated_at' => current_time( 'mysql' ),
+		);
+		if ( $exists > 0 ) {
+			return false !== $wpdb->update(
+				"{$p}vtc_tp_match_time_override",
+				array(
+					'start_time' => $st,
+					'end_time'   => $en,
+					'updated_at' => $data['updated_at'],
+				),
+				array( 'match_key' => $key ),
+				array( '%s', '%s', '%s' ),
+				array( '%s' )
+			);
+		}
+		return false !== $wpdb->insert(
+			"{$p}vtc_tp_match_time_override",
+			$data,
+			array( '%s', '%s', '%s', '%s' )
+		);
+	}
+
+	/**
 	 * @return array<int, object>
 	 */
 	public function get_slots_draft( $blueprint_id, $version_id = null ) {
