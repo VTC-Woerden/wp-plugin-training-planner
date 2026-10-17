@@ -74,8 +74,7 @@ class VTC_TP_Public {
 			$week = VTC_TP_Schedule::current_iso_week_public_calendar();
 		}
 		wp_enqueue_style( 'vtc-tp-public' );
-		$data = $this->schedule->get_merged_week( $week, $this->nevobo, true );
-		$data = $this->with_public_week_event_bridge( $data );
+		$data = $this->load_public_week_data( $week );
 		VTC_TP_Metrics::record_public_week_view( 'shortcode' );
 		return self::render_week_html( $data, false, self::week_nav_config( $data['iso_week'], $lock_week ) );
 	}
@@ -122,8 +121,7 @@ class VTC_TP_Public {
 			$week = VTC_TP_Schedule::current_iso_week_public_calendar();
 		}
 		wp_enqueue_style( 'vtc-tp-public' );
-		$data = $this->schedule->get_merged_week( $week, $this->nevobo, true );
-		$data = $this->with_public_week_event_bridge( $data );
+		$data = $this->load_public_week_data( $week );
 		VTC_TP_Metrics::record_public_week_view( 'block' );
 
 		return self::render_week_html( $data, false, self::week_nav_config( $data['iso_week'], $lock_week ) );
@@ -161,7 +159,7 @@ class VTC_TP_Public {
 		if ( ! $week ) {
 			return new WP_Error( 'bad_week', __( 'Ongeldige week', 'vtc-training-planner' ), array( 'status' => 400 ) );
 		}
-		$data = $this->schedule->get_merged_week( $week, $this->nevobo, true );
+		$data = $this->load_public_week_data( $week );
 		VTC_TP_Metrics::record_public_week_view( 'rest' );
 		return rest_ensure_response(
 			array(
@@ -183,8 +181,7 @@ class VTC_TP_Public {
 		if ( ! $week ) {
 			return new WP_Error( 'bad_week', __( 'Ongeldige week', 'vtc-training-planner' ), array( 'status' => 400 ) );
 		}
-		$data = $this->schedule->get_merged_week( $week, $this->nevobo, true );
-		$data = $this->with_public_week_event_bridge( $data );
+		$data = $this->load_public_week_data( $week );
 		VTC_TP_Metrics::record_public_week_view( 'rest_html' );
 		$html = self::get_week_calendar_html( $data, false, true );
 		$prev      = VTC_TP_Schedule::shift_iso_week( $data['iso_week'], -1 );
@@ -361,22 +358,28 @@ class VTC_TP_Public {
 			: array( 'enabled' => false );
 
 		$ajax_nav = ! $is_admin && ! empty( $nav['enabled'] ) && ! empty( $nav['prev_iso'] ) && ! empty( $nav['next_iso'] );
+		$public   = ! $is_admin;
 
 		ob_start();
 		wp_enqueue_script( 'vtc-tp-public-tooltips' );
-		if ( $ajax_nav ) {
+		if ( $public ) {
 			wp_enqueue_script( 'vtc-tp-week-nav' );
 			wp_localize_script(
 				'vtc-tp-week-nav',
 				'vtcTpWeekNav',
 				array(
-					'url'    => untrailingslashit( rest_url( 'vtc-tp/v1/week-html' ) ),
-					'errMsg' => __( 'Week laden mislukt.', 'vtc-training-planner' ),
+					'url'              => untrailingslashit( rest_url( 'vtc-tp/v1/week-html' ) ),
+					'errMsg'           => __( 'Week laden mislukt.', 'vtc-training-planner' ),
+					'showMatches'      => __( 'Wedstrijden tonen', 'vtc-training-planner' ),
+					'showMatchesTitle' => __( 'Toon thuiswedstrijden in de zaal (Nevobo) in dit rooster', 'vtc-training-planner' ),
 				)
 			);
 		}
 
-		echo '<div class="vtc-tp-week-shell"';
+		echo '<div class="vtc-tp-week-shell';
+		if ( $public ) {
+			echo ' data-matches-toggle="1"';
+		}
 		if ( $ajax_nav ) {
 			echo ' data-ajax-week="1" data-prev-iso="' . esc_attr( $nav['prev_iso'] ) . '" data-next-iso="' . esc_attr( $nav['next_iso'] ) . '" data-current-iso="' . esc_attr( $data['iso_week'] ) . '"';
 		}
@@ -388,6 +391,18 @@ class VTC_TP_Public {
 			echo '<div class="vtc-tp-week-title-wrap"><h2 class="vtc-tp-week-title vtc-tp-week-title--toolbar">' . esc_html( sprintf( __( 'Week %s', 'vtc-training-planner' ), $data['iso_week'] ) ) . '</h2></div>';
 			echo '<button type="button" class="vtc-tp-week-nav-btn" data-nav-week="' . esc_attr( $nav['next_iso'] ) . '" aria-label="' . esc_attr__( 'Volgende week', 'vtc-training-planner' ) . '"><span class="vtc-tp-week-nav-icon" aria-hidden="true">&#8594;</span></button>';
 			echo '</div>';
+		}
+
+		if ( $public ) {
+			echo '<div class="vtc-tp-week-matches-bar">';
+			echo '<label class="vtc-tp-matches-toggle" title="' . esc_attr__( 'Toon thuiswedstrijden in de zaal (Nevobo) in dit rooster', 'vtc-training-planner' ) . '">';
+			echo '<input type="checkbox" class="vtc-tp-show-matches-cb" /> ';
+			echo '<span>' . esc_html__( 'Wedstrijden tonen', 'vtc-training-planner' ) . '</span>';
+			echo '</label>';
+			echo '</div>';
+		}
+
+		if ( $ajax_nav ) {
 			echo '<div class="vtc-tp-week-ajax-inner">';
 		}
 
@@ -398,6 +413,30 @@ class VTC_TP_Public {
 		}
 		echo '</div>';
 		return ob_get_clean();
+	}
+
+	/**
+	 * Publieke weekdata: trainingen + wedstrijden (scope uit instellingen, nooit “none”).
+	 * Weergave van wedstrijden gebeurt via frontend-toggle (standaard uit).
+	 *
+	 * @return array{events: array, iso_week: string, used_exceptions: bool}
+	 */
+	private function load_public_week_data( $iso_week ) {
+		$data = $this->schedule->get_merged_week( $iso_week, $this->nevobo, true, $this->public_matches_scope() );
+		return $this->with_public_week_event_bridge( $data );
+	}
+
+	/**
+	 * Scope voor wedstrijden in de publieke week: home_halls of all (geen none).
+	 *
+	 * @return string
+	 */
+	private function public_matches_scope() {
+		$scope = (string) get_option( 'vtc_tp_matches_scope', 'home_halls' );
+		if ( 'all' === $scope ) {
+			return 'all';
+		}
+		return 'home_halls';
 	}
 
 	/**

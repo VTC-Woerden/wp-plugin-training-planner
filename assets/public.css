@@ -65,6 +65,39 @@
 	margin-bottom: 0.75rem;
 }
 
+.vtc-tp-week-matches-bar {
+	display: flex;
+	justify-content: flex-end;
+	align-items: center;
+	margin: 0 0 0.85rem;
+}
+
+.vtc-tp-matches-toggle {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--vtc-tp-ink, #1d2327);
+	cursor: pointer;
+	user-select: none;
+	padding: 6px 10px;
+	border-radius: 8px;
+	border: 1px solid var(--vtc-tp-border, #dcdcde);
+	background: #fff;
+}
+
+.vtc-tp-matches-toggle input {
+	margin: 0;
+	width: 16px;
+	height: 16px;
+}
+
+/* Wedstrijden standaard verborgen tot bezoeker toggle aanzet */
+.vtc-tp-week-shell[data-matches-toggle="1"]:not(.is-show-matches) .vtc-tp-block--match {
+	display: none !important;
+}
+
 .vtc-tp-week-shell--loading {
 	opacity: 0.72;
 	pointer-events: none;

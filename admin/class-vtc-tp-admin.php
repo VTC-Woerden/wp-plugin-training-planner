@@ -317,7 +317,7 @@ class VTC_TP_Admin {
 			case 'save_settings':
 				update_option( 'vtc_tp_cache_ttl', max( 60, absint( $_POST['cache_ttl'] ?? 1800 ) ) );
 				$scope = sanitize_text_field( wp_unslash( $_POST['matches_scope'] ?? 'home_halls' ) );
-				update_option( 'vtc_tp_matches_scope', in_array( $scope, array( 'home_halls', 'all', 'none' ), true ) ? $scope : 'home_halls' );
+				update_option( 'vtc_tp_matches_scope', in_array( $scope, array( 'home_halls', 'all' ), true ) ? $scope : 'home_halls' );
 				add_settings_error( 'vtc_tp', 'ok', __( 'Instellingen opgeslagen.', 'vtc-training-planner' ), 'success' );
 				break;
 
@@ -1015,6 +1015,9 @@ class VTC_TP_Admin {
 		$code  = $this->db->get_nevobo_code();
 		$ttl   = (int) get_option( 'vtc_tp_cache_ttl', 1800 );
 		$scope = get_option( 'vtc_tp_matches_scope', 'home_halls' );
+		if ( 'all' !== $scope ) {
+			$scope = 'home_halls';
+		}
 		$probe = $code ? $this->nevobo->probe_club_feed( $code, false ) : null;
 		$metrics_token = VTC_TP_Metrics::get_token();
 		$metrics_url   = add_query_arg( 'token', $metrics_token, rest_url( 'vtc-tp/v1/metrics' ) );
@@ -1041,10 +1044,9 @@ class VTC_TP_Admin {
 					<tr>
 						<th><?php esc_html_e( 'Wedstrijden op de website', 'vtc-training-planner' ); ?></th>
 						<td>
+							<p class="description" style="margin-top:0;"><?php esc_html_e( 'Bezoekers zetten wedstrijden zelf aan via “Wedstrijden tonen” op het weekrooster (standaard uit). Hier kies je welke wedstrijden dan beschikbaar zijn:', 'vtc-training-planner' ); ?></p>
 							<label><input type="radio" name="matches_scope" value="home_halls" <?php checked( $scope, 'home_halls' ); ?> /> <?php esc_html_e( 'Alleen in eigen zalen (match met locatienaam uit stamdata)', 'vtc-training-planner' ); ?></label><br />
-							<label><input type="radio" name="matches_scope" value="all" <?php checked( $scope, 'all' ); ?> /> <?php esc_html_e( 'Alle clubwedstrijden in de week (thuis en uit)', 'vtc-training-planner' ); ?></label><br />
-							<label><input type="radio" name="matches_scope" value="none" <?php checked( $scope, 'none' ); ?> /> <?php esc_html_e( 'Geen wedstrijden (alleen trainingsschema)', 'vtc-training-planner' ); ?></label>
-							<p class="description"><?php esc_html_e( 'Geldt alleen voor het publieke weekoverzicht. In Rooster (visueel) → Week kun je wedstrijden apart aan/uit zetten.', 'vtc-training-planner' ); ?></p>
+							<label><input type="radio" name="matches_scope" value="all" <?php checked( $scope, 'all' ); ?> /> <?php esc_html_e( 'Alle clubwedstrijden in de week (thuis en uit)', 'vtc-training-planner' ); ?></label>
 						</td>
 					</tr>
 				</table>
