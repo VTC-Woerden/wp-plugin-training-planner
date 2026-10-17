@@ -429,15 +429,6 @@ class VTC_TP_Public {
 			echo '</div>';
 		}
 
-		if ( $public ) {
-			echo '<div class="vtc-tp-week-matches-bar">';
-			echo '<label class="vtc-tp-matches-toggle" title="' . esc_attr__( 'Toon thuiswedstrijden in de zaal (Nevobo) in dit rooster', 'vtc-training-planner' ) . '">';
-			echo '<input type="checkbox" class="vtc-tp-show-matches-cb" /> ';
-			echo '<span>' . esc_html__( 'Wedstrijden tonen', 'vtc-training-planner' ) . '</span>';
-			echo '</label>';
-			echo '</div>';
-		}
-
 		if ( $ajax_nav ) {
 			echo '<div class="vtc-tp-week-ajax-inner">';
 		}
@@ -447,6 +438,16 @@ class VTC_TP_Public {
 		if ( $ajax_nav ) {
 			echo '</div>';
 		}
+
+		if ( $public ) {
+			echo '<div class="vtc-tp-week-matches-bar">';
+			echo '<label class="vtc-tp-matches-toggle" title="' . esc_attr__( 'Toon thuiswedstrijden in de zaal (Nevobo) in dit rooster', 'vtc-training-planner' ) . '">';
+			echo '<input type="checkbox" class="vtc-tp-show-matches-cb" /> ';
+			echo '<span>' . esc_html__( 'Wedstrijden tonen', 'vtc-training-planner' ) . '</span>';
+			echo '</label>';
+			echo '</div>';
+		}
+
 		echo '</div>';
 		return ob_get_clean();
 	}
